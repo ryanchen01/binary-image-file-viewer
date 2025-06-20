@@ -54,7 +54,8 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
                             message.width,
                             message.height,
                             message.slice,
-                            message.dataType
+                            message.dataType,
+                            message.endianness
                         );
                         break;
                 }
@@ -92,7 +93,8 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
         width: number,
         height: number,
         slice: number,
-        dataType: string
+        dataType: string,
+        endianness: boolean = true
     ): Promise<void> {
         try {
             const bytesPerPixel = this.getBytesPerPixel(dataType);
@@ -299,8 +301,19 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
                 </select>
             </div>
             <div class="control-group">
+                <label for="endianness">Endianness</label>
+                <select id="endianness">
+                    <option value="little">Little-Endian</option>
+                    <option value="big">Big-Endian</option>
+                </select>
+            </div>
+            <div class="control-group">
                 <label for="slice">Slice</label>
                 <input type="number" id="slice" value="0" min="0">
+            </div>
+            <div class="control-group">
+                <label for="sliceSlider">Navigate</label>
+                <input type="range" id="sliceSlider" value="0" min="0" max="0" style="width: 100px;">
             </div>
             <div class="control-group">
                 <label for="loadSlice">Load</label>
@@ -355,7 +368,9 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
         const widthInput = document.getElementById('width');
         const heightInput = document.getElementById('height');
         const dataTypeSelect = document.getElementById('dataType');
+        const endiannessSelect = document.getElementById('endianness');
         const sliceInput = document.getElementById('slice');
+        const sliceSlider = document.getElementById('sliceSlider');
         const loadSliceButton = document.getElementById('loadSlice');
         const canvas = document.getElementById('imageCanvas');
         const ctx = canvas.getContext('2d');
@@ -374,6 +389,16 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
         widthInput.addEventListener('input', updateSliceInfo);
         heightInput.addEventListener('input', updateSliceInfo);
         dataTypeSelect.addEventListener('change', updateSliceInfo);
+        
+        // Slice navigation event listeners
+        sliceInput.addEventListener('input', syncSliceControls);
+        sliceSlider.addEventListener('input', syncSliceControls);
+        
+        // Keyboard shortcuts for slice navigation
+        document.addEventListener('keydown', handleKeyboard);
+        
+        // Mouse wheel navigation on canvas
+        canvas.addEventListener('wheel', handleMouseWheel);
         
         // Handle window resize to rescale canvas
         window.addEventListener('resize', () => {
@@ -420,6 +445,7 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
             const height = parseInt(heightInput.value);
             const slice = parseInt(sliceInput.value);
             const dataType = dataTypeSelect.value;
+            const endianness = endiannessSelect.value === 'little';
             
             if (width <= 0 || height <= 0 || slice < 0) {
                 showError('Please enter valid positive values for width, height, and slice.');
@@ -431,13 +457,74 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
                 width,
                 height,
                 slice,
-                dataType
+                dataType,
+                endianness
             });
+        }
+        
+        function syncSliceControls(event) {
+            const sourceElement = event.target;
+            const newValue = parseInt(sourceElement.value);
+            
+            if (sourceElement === sliceInput) {
+                sliceSlider.value = newValue;
+            } else if (sourceElement === sliceSlider) {
+                sliceInput.value = newValue;
+            }
+            
+            // Auto-load slice when using slider or when pressing Enter in input
+            if (sourceElement === sliceSlider || (sourceElement === sliceInput && event.type === 'keydown' && event.key === 'Enter')) {
+                loadSlice();
+            }
+        }
+        
+        function handleKeyboard(event) {
+            // Only handle navigation if canvas or document is focused
+            if (document.activeElement && document.activeElement.tagName === 'INPUT' && document.activeElement !== sliceInput) {
+                return; // Don't interfere with other input fields
+            }
+            
+            const currentSlice = parseInt(sliceInput.value);
+            const maxSlice = parseInt(sliceInput.max);
+            
+            if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+                event.preventDefault();
+                if (currentSlice > 0) {
+                    navigateToSlice(currentSlice - 1);
+                }
+            } else if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+                event.preventDefault();
+                if (currentSlice < maxSlice) {
+                    navigateToSlice(currentSlice + 1);
+                }
+            }
+        }
+        
+        function handleMouseWheel(event) {
+            event.preventDefault();
+            
+            const currentSlice = parseInt(sliceInput.value);
+            const maxSlice = parseInt(sliceInput.max);
+            
+            if (event.deltaY < 0 && currentSlice > 0) {
+                // Scroll up - previous slice
+                navigateToSlice(currentSlice - 1);
+            } else if (event.deltaY > 0 && currentSlice < maxSlice) {
+                // Scroll down - next slice
+                navigateToSlice(currentSlice + 1);
+            }
+        }
+        
+        function navigateToSlice(newSlice) {
+            sliceInput.value = newSlice;
+            sliceSlider.value = newSlice;
+            loadSlice();
         }
         
         function renderSlice(data) {
             const { width, height, dataType } = data;
             const rawData = new Uint8Array(data.data);
+            const endianness = endiannessSelect.value === 'little';
             
             // Set canvas actual size (for drawing)
             canvas.width = width;
@@ -448,7 +535,7 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
             const pixels = imageData.data;
             
             // Convert binary data to grayscale pixels
-            const values = parseDataType(rawData, dataType);
+            const values = parseDataType(rawData, dataType, endianness);
             const { min, max } = findMinMax(values);
             
             for (let i = 0; i < values.length; i++) {
@@ -492,7 +579,7 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
             }
         }
         
-        function parseDataType(buffer, dataType) {
+        function parseDataType(buffer, dataType, endianness = true) {
             const view = new DataView(buffer.buffer);
             const values = [];
             let bytesPerPixel, getValue;
@@ -504,23 +591,23 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
                     break;
                 case 'uint16':
                     bytesPerPixel = 2;
-                    getValue = (offset) => view.getUint16(offset, true); // little endian
+                    getValue = (offset) => view.getUint16(offset, endianness);
                     break;
                 case 'int16':
                     bytesPerPixel = 2;
-                    getValue = (offset) => view.getInt16(offset, true);
+                    getValue = (offset) => view.getInt16(offset, endianness);
                     break;
                 case 'float32':
                     bytesPerPixel = 4;
-                    getValue = (offset) => view.getFloat32(offset, true);
+                    getValue = (offset) => view.getFloat32(offset, endianness);
                     break;
                 case 'int32':
                     bytesPerPixel = 4;
-                    getValue = (offset) => view.getInt32(offset, true);
+                    getValue = (offset) => view.getInt32(offset, endianness);
                     break;
                 case 'float64':
                     bytesPerPixel = 8;
-                    getValue = (offset) => view.getFloat64(offset, true);
+                    getValue = (offset) => view.getFloat64(offset, endianness);
                     break;
                 default:
                     throw new Error(\`Unsupported data type: \${dataType}\`);
@@ -565,17 +652,21 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
                 const bytesPerPixel = getBytesPerPixel(dataType);
                 const sliceSize = width * height * bytesPerPixel;
                 const numSlices = Math.floor(fileInfo.fileSize / sliceSize);
+                const maxSlice = Math.max(0, numSlices - 1);
                 
                 numSlicesEl.textContent = numSlices.toString();
-                sliceInput.max = Math.max(0, numSlices - 1).toString();
+                sliceInput.max = maxSlice.toString();
+                sliceSlider.max = maxSlice.toString();
                 
                 // Reset slice to 0 if current slice exceeds available slices
                 if (parseInt(sliceInput.value) >= numSlices) {
                     sliceInput.value = '0';
+                    sliceSlider.value = '0';
                 }
             } else {
                 numSlicesEl.textContent = '-';
                 sliceInput.max = '';
+                sliceSlider.max = '0';
             }
         }
         

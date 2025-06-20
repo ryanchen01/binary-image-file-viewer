@@ -6,10 +6,10 @@
 - [x] Render a single float32 slice in the Webview canvas
 
 ## Milestone 2 (Week 2)
-- [ ] Build metadata input UI: width, height, optional depth
-- [ ] Add data-type dropdown (float32, uint8, uint16, int16, int32, float64)
-- [ ] Implement endianness toggle (little/big)
-- [ ] Develop slice navigation control: slider, Prev/Next buttons, ←/→ keyboard shortcuts
+- [x] Build metadata input UI: width, height, optional depth
+- [x] Add data-type dropdown (float32, uint8, uint16, int16, int32, float64)
+- [x] Implement endianness toggle (little/big)
+- [x] Develop slice navigation control: slider, mouse scroll, ←/→ keyboard shortcuts
 
 ## Milestone 3 (Week 3)
 - [ ] Integrate `HistogramWorker` Web Worker for real-time histogram computation

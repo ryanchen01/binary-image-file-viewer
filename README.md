@@ -1,71 +1,172 @@
-# binary-image-file-viewer README
+# Binary Image File Viewer
 
-This is the README for your extension "binary-image-file-viewer". After writing up a brief description, we recommend including the following sections.
+A Visual Studio Code extension for viewing and analyzing binary image files with advanced visualization capabilities. Perfect for researchers, engineers, and data scientists working with raw binary image data from scientific instruments, medical devices, or custom imaging systems.
 
 ## Features
 
-Describe specific features of your extension including screenshots of your extension in action. Image paths are relative to this README file.
+### 🖼️ Binary Image Visualization
+- **Multi-format Support**: View binary files as grayscale images with configurable data types
+- **Real-time Rendering**: Interactive canvas-based visualization with automatic scaling
+- **Multiple Data Types**: Support for uint8, uint16, int16, int32, float32, and float64 formats
+- **Endianness Control**: Toggle between little-endian and big-endian byte ordering
 
-For example if there is an image subfolder under your extension project workspace:
+### 🎛️ Interactive Controls
+- **Metadata Input**: Specify image dimensions (width × height) and data type
+- **Slice Navigation**: Navigate through multi-slice volumes with:
+  - Range slider for quick navigation
+  - Mouse wheel scrolling on canvas
+  - Keyboard shortcuts (←/→ arrow keys)
+  - Direct slice number input
+- **Auto-scaling**: Images automatically scale to fit the viewer window
 
-\!\[feature X\]\(images/feature-x.png\)
+### 📊 File Information
+- **File Statistics**: View file size, dimensions, and calculated slice count
+- **Current Slice Info**: Track which slice you're currently viewing
+- **Smart Validation**: Automatic bounds checking and error handling
 
-> Tip: Many popular extensions utilize animations. This is an excellent way to show off your extension! We recommend short, focused animations that are easy to follow.
+## Supported File Types
+
+- `.raw` files (raw binary image data)
+- `.bin` files (binary data files)
+- Any binary file containing image data (configurable through VS Code settings)
+
+## Installation
+
+1. Install from the VS Code Marketplace (coming soon)
+2. Or install from VSIX:
+   - Download the `.vsix` file
+   - Run `code --install-extension binary-image-file-viewer.vsix`
+
+## Usage
+
+### Opening Binary Files
+1. Open a `.raw` or `.bin` file in VS Code
+2. The Binary Image Viewer will automatically activate
+3. Configure the image parameters in the control panel
+
+### Basic Workflow
+1. **Set Dimensions**: Enter the width and height of your image data
+2. **Choose Data Type**: Select the appropriate data type (uint8, float32, etc.)
+3. **Set Endianness**: Choose little-endian or big-endian based on your data format
+4. **Load Slice**: Click "Load Slice" to render the image
+5. **Navigate**: Use the slider, mouse wheel, or arrow keys to browse through slices
+
+### Keyboard Shortcuts
+- `←/→` or `↑/↓`: Navigate between slices
+- `Mouse Wheel`: Scroll through slices when hovering over the image
+
+## Data Types Supported
+
+| Type | Description | Bytes per Pixel |
+|------|-------------|-----------------|
+| `uint8` | Unsigned 8-bit integer (0-255) | 1 |
+| `uint16` | Unsigned 16-bit integer (0-65535) | 2 |
+| `int16` | Signed 16-bit integer (-32768 to 32767) | 2 |
+| `int32` | Signed 32-bit integer | 4 |
+| `float32` | 32-bit floating point | 4 |
+| `float64` | 64-bit floating point | 8 |
+
+## Configuration
+
+Currently, the extension works with files having `.raw` and `.bin` extensions. Future versions will support custom file extension configuration through VS Code settings.
+
+## Examples
+
+### Medical Imaging Data
+```
+Width: 512
+Height: 512
+Data Type: uint16
+Endianness: Little-Endian
+```
+
+### Scientific Instrument Data
+```
+Width: 1024
+Height: 768
+Data Type: float32
+Endianness: Big-Endian
+```
+
+### Raw Camera Data
+```
+Width: 2048
+Height: 1536
+Data Type: uint8
+Endianness: Little-Endian
+```
+
+## Roadmap
+
+### Milestone 3 (In Development)
+- [ ] Real-time histogram computation with Web Workers
+- [ ] Window/level controls for contrast adjustment
+- [ ] Auto-windowing based on percentiles
+
+### Milestone 4 (Planned)
+- [ ] Per-file settings persistence
+- [ ] PNG export functionality
+- [ ] Enhanced error handling
+- [ ] Undo/redo for adjustments
+
+### Future Enhancements
+- [ ] 3D volume rendering
+- [ ] Multi-slice view modes
+- [ ] Advanced export options
+- [ ] Performance optimizations for large datasets
 
 ## Requirements
 
-If you have any requirements or dependencies, add a section describing those and how to install and configure them.
-
-## Extension Settings
-
-Include if your extension adds any VS Code settings through the `contributes.configuration` extension point.
-
-For example:
-
-This extension contributes the following settings:
-
-* `myExtension.enable`: Enable/disable this extension.
-* `myExtension.thing`: Set to `blah` to do something.
+- Visual Studio Code 1.101.0 or higher
+- No additional dependencies required
 
 ## Known Issues
 
-Calling out known issues can help limit users opening duplicate issues against your extension.
+- Large files (>100MB) may experience slower loading times
+- Maximum recommended image size: 4096×4096 pixels
+- Memory usage scales with image dimensions and bit depth
+
+## Contributing
+
+This extension is under active development. Contributions, bug reports, and feature requests are welcome!
+
+## Development
+
+### Building from Source
+```bash
+git clone <repository-url>
+cd binary-image-file-viewer
+npm install
+npm run compile
+```
+
+### Testing
+```bash
+npm run test
+```
+
+### Packaging
+```bash
+npm run package
+```
+
+## License
+
+[Add your license information here]
 
 ## Release Notes
 
-Users appreciate release notes as you update your extension.
+### 0.0.1
 
-### 1.0.0
-
-Initial release of ...
-
-### 1.0.1
-
-Fixed issue #.
-
-### 1.1.0
-
-Added features X, Y, and Z.
+Initial release with core functionality:
+- Basic binary image viewing
+- Multiple data type support
+- Slice navigation controls
+- Endianness toggle
+- Interactive UI controls
 
 ---
 
-## Following extension guidelines
+**Enjoy visualizing your binary image data!** 🚀
 
-Ensure that you've read through the extensions guidelines and follow the best practices for creating your extension.
-
-* [Extension Guidelines](https://code.visualstudio.com/api/references/extension-guidelines)
-
-## Working with Markdown
-
-You can author your README using Visual Studio Code. Here are some useful editor keyboard shortcuts:
-
-* Split the editor (`Cmd+\` on macOS or `Ctrl+\` on Windows and Linux).
-* Toggle preview (`Shift+Cmd+V` on macOS or `Shift+Ctrl+V` on Windows and Linux).
-* Press `Ctrl+Space` (Windows, Linux, macOS) to see a list of Markdown snippets.
-
-## For more information
-
-* [Visual Studio Code's Markdown Support](http://code.visualstudio.com/docs/languages/markdown)
-* [Markdown Syntax Reference](https://help.github.com/articles/markdown-basics/)
-
-**Enjoy!**
+For questions, issues, or feature requests, please visit our [GitHub repository](https://github.com/your-username/binary-image-file-viewer).
