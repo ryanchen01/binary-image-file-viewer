@@ -2,9 +2,20 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 
+/**
+ * Custom editor provider responsible for rendering binary image files in a
+ * readonly webview. The provider reads slices of the file on demand and sends
+ * them to the webview for visualization.
+ */
 export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorProvider {
     constructor(private readonly context: vscode.ExtensionContext) {}
 
+    /**
+     * Register the provider with VS Code.
+     *
+     * @param context Extension context used to create the provider.
+     * @returns Disposable that unregisters the provider.
+     */
     public static register(context: vscode.ExtensionContext): vscode.Disposable {
         const provider = new BinaryImageEditorProvider(context);
         const providerRegistration = vscode.window.registerCustomEditorProvider(
@@ -14,10 +25,14 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
         return providerRegistration;
     }
 
+    /**
+     * Create a simple custom document representation. The provider does not
+     * modify the file so the document only exposes its URI.
+     */
     public async openCustomDocument(
         uri: vscode.Uri,
-        openContext: vscode.CustomDocumentOpenContext,
-        token: vscode.CancellationToken
+        _openContext: vscode.CustomDocumentOpenContext,
+        _token: vscode.CancellationToken
     ): Promise<vscode.CustomDocument> {
         return {
             uri,
@@ -25,10 +40,14 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
         };
     }
 
+    /**
+     * Resolve the custom editor by wiring up the webview and responding to
+     * messages from the client side.
+     */
     public async resolveCustomEditor(
         document: vscode.CustomDocument,
         webviewPanel: vscode.WebviewPanel,
-        token: vscode.CancellationToken
+        _token: vscode.CancellationToken
     ): Promise<void> {
         // Configure webview
         webviewPanel.webview.options = {
@@ -65,6 +84,10 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
         );
     }
 
+    /**
+     * Send basic file information to the webview so that the UI can display
+     * name and size before any slice data is requested.
+     */
     private async sendFileData(webview: vscode.Webview, uri: vscode.Uri): Promise<void> {
         try {
             const stats = await vscode.workspace.fs.stat(uri);
@@ -81,12 +104,27 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
         }
     }
 
+    /**
+     * Calculate how many slices are available in a file based on its size and
+     * image metadata.
+     */
     private calculateMaxSlices(fileSize: number, width: number, height: number, dataType: string): number {
         const bytesPerPixel = this.getBytesPerPixel(dataType);
         const sliceSize = width * height * bytesPerPixel;
         return Math.floor(fileSize / sliceSize);
     }
 
+    /**
+     * Read a specific slice from the binary file and send it to the webview.
+     *
+     * @param webview Target webview to post the slice data to.
+     * @param uri URI of the file being read.
+     * @param width Width of the image in pixels.
+     * @param height Height of the image in pixels.
+     * @param slice Slice index to read.
+     * @param dataType Datatype of each pixel.
+     * @param endianness True for little-endian, false for big-endian.
+     */
     private async readSlice(
         webview: vscode.Webview,
         uri: vscode.Uri,
@@ -128,6 +166,9 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
         }
     }
 
+    /**
+     * Return the number of bytes that a pixel of the given type occupies.
+     */
     private getBytesPerPixel(dataType: string): number {
         switch (dataType) {
             case 'uint8':
@@ -145,6 +186,10 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
         }
     }
 
+    /**
+     * Generate the HTML used for the webview panel. The markup includes the UI
+     * and scripts required to display and navigate image slices.
+     */
     private getHtmlForWebview(webview: vscode.Webview): string {
         return `<!DOCTYPE html>
 <html lang="en">

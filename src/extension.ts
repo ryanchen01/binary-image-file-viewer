@@ -3,8 +3,13 @@
 import * as vscode from 'vscode';
 import { BinaryImageEditorProvider } from './binaryImageEditorProvider';
 
-// This method is called when your extension is activated
-// Your extension is activated the very first time the command is executed
+/**
+ * Called when the extension is activated. This happens the first time the
+ * command is executed or when a registered file type is opened.
+ *
+ * @param context VS Code extension context used for subscriptions and access
+ * to extension resources.
+ */
 export function activate(context: vscode.ExtensionContext) {
 
 	// Use the console to output diagnostic information (console.log) and errors (console.error)
@@ -36,5 +41,9 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(providerRegistration, disposable);
 }
 
-// This method is called when your extension is deactivated
+/**
+ * Clean up resources when the extension is deactivated. Currently this
+ * extension has no teardown logic but the function is provided for
+ * completeness.
+ */
 export function deactivate() {}
