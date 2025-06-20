@@ -99,20 +99,18 @@ Endianness: Little-Endian
 ## Roadmap
 
 ### Milestone 3 (In Development)
-- [ ] Real-time histogram computation with Web Workers
+- [ ] Real-time histogram computation
 - [ ] Window/level controls for contrast adjustment
 - [ ] Auto-windowing based on percentiles
 
 ### Milestone 4 (Planned)
 - [ ] Per-file settings persistence
-- [ ] PNG export functionality
 - [ ] Enhanced error handling
-- [ ] Undo/redo for adjustments
 
 ### Future Enhancements
-- [ ] 3D volume rendering
+- [ ] MIP rendering
 - [ ] Multi-slice view modes
-- [ ] Advanced export options
+- [ ] PNG export functionality
 - [ ] Performance optimizations for large datasets
 
 ## Requirements
