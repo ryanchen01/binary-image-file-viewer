@@ -187,6 +187,43 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
     }
 
     /**
+     * Apply window/level to an array of numeric values and map them to
+     * the 0-255 grayscale range.
+     */
+    private applyWindowLevel(values: number[], windowMin: number, windowMax: number): Uint8ClampedArray {
+        const range = windowMax - windowMin || 1;
+        const output = new Uint8ClampedArray(values.length);
+        for (let i = 0; i < values.length; i++) {
+            let normalized = (values[i] - windowMin) / range;
+            if (normalized < 0) {
+                normalized = 0;
+            } else if (normalized > 1) {
+                normalized = 1;
+            }
+            output[i] = Math.round(normalized * 255);
+        }
+        return output;
+    }
+
+    /**
+     * Find the minimum and maximum value in an array.
+     */
+    private findMinMax(values: number[]): { min: number; max: number } {
+        let min = values[0];
+        let max = values[0];
+        for (let i = 1; i < values.length; i++) {
+            const v = values[i];
+            if (v < min) {
+                min = v;
+            }
+            if (v > max) {
+                max = v;
+            }
+        }
+        return { min, max };
+    }
+
+    /**
      * Generate the HTML used for the webview panel. The markup includes the UI
      * and scripts required to display and navigate image slices.
      */
@@ -364,6 +401,18 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
                 <label for="loadSlice">Load</label>
                 <button id="loadSlice">Load Slice</button>
             </div>
+            <div class="control-group">
+                <label for="windowMin">Window Min</label>
+                <input type="range" id="windowMin" value="0" min="0" max="255" style="width: 100px;">
+            </div>
+            <div class="control-group">
+                <label for="windowMax">Window Max</label>
+                <input type="range" id="windowMax" value="255" min="0" max="255" style="width: 100px;">
+            </div>
+            <div class="control-group">
+                <label>&nbsp;</label>
+                <button id="resetWindow">Reset</button>
+            </div>
         </div>
         
         <div class="content">
@@ -408,6 +457,10 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
         
         let fileInfo = null;
         let currentSliceData = null;
+        let sliceMin = 0;
+        let sliceMax = 0;
+        let windowMin = null;
+        let windowMax = null;
         
         // DOM elements
         const widthInput = document.getElementById('width');
@@ -417,6 +470,9 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
         const sliceInput = document.getElementById('slice');
         const sliceSlider = document.getElementById('sliceSlider');
         const loadSliceButton = document.getElementById('loadSlice');
+        const windowMinInput = document.getElementById('windowMin');
+        const windowMaxInput = document.getElementById('windowMax');
+        const resetWindowButton = document.getElementById('resetWindow');
         const canvas = document.getElementById('imageCanvas');
         const ctx = canvas.getContext('2d');
         const errorPanel = document.getElementById('errorPanel');
@@ -438,6 +494,9 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
         // Slice navigation event listeners
         sliceInput.addEventListener('input', syncSliceControls);
         sliceSlider.addEventListener('input', syncSliceControls);
+        windowMinInput.addEventListener('input', updateWindow);
+        windowMaxInput.addEventListener('input', updateWindow);
+        resetWindowButton.addEventListener('click', resetWindow);
         
         // Keyboard shortcuts for slice navigation
         document.addEventListener('keydown', handleKeyboard);
@@ -582,11 +641,19 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
             // Convert binary data to grayscale pixels
             const values = parseDataType(rawData, dataType, endianness);
             const { min, max } = findMinMax(values);
-            
-            for (let i = 0; i < values.length; i++) {
-                const normalized = (values[i] - min) / (max - min);
-                const grayscale = Math.floor(normalized * 255);
-                
+            sliceMin = min;
+            sliceMax = max;
+            if (windowMin === null || windowMax === null) {
+                windowMin = min;
+                windowMax = max;
+            }
+
+            updateWindowControls();
+            const mapped = applyWindowLevel(values, windowMin, windowMax);
+
+            for (let i = 0; i < mapped.length; i++) {
+                const grayscale = mapped[i];
+
                 const pixelIndex = i * 4;
                 pixels[pixelIndex] = grayscale;     // R
                 pixels[pixelIndex + 1] = grayscale; // G
@@ -675,6 +742,49 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
             }
             
             return { min, max };
+        }
+
+        function applyWindowLevel(values, wMin, wMax) {
+            const range = wMax - wMin || 1;
+            const out = new Uint8ClampedArray(values.length);
+            for (let i = 0; i < values.length; i++) {
+                let n = (values[i] - wMin) / range;
+                if (n < 0) n = 0;
+                else if (n > 1) n = 1;
+                out[i] = Math.round(n * 255);
+            }
+            return out;
+        }
+
+        function updateWindowControls() {
+            windowMinInput.min = sliceMin;
+            windowMinInput.max = sliceMax;
+            windowMaxInput.min = sliceMin;
+            windowMaxInput.max = sliceMax;
+            windowMinInput.value = windowMin;
+            windowMaxInput.value = windowMax;
+        }
+
+        function updateWindow() {
+            windowMin = parseFloat(windowMinInput.value);
+            windowMax = parseFloat(windowMaxInput.value);
+            if (windowMin > windowMax) {
+                const temp = windowMin;
+                windowMin = windowMax;
+                windowMax = temp;
+            }
+            if (currentSliceData) {
+                renderSlice(currentSliceData);
+            }
+        }
+
+        function resetWindow() {
+            windowMin = sliceMin;
+            windowMax = sliceMax;
+            updateWindowControls();
+            if (currentSliceData) {
+                renderSlice(currentSliceData);
+            }
         }
         
         function showError(message) {
