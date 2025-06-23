@@ -401,18 +401,6 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
                 <label for="loadSlice">Load</label>
                 <button id="loadSlice">Load Slice</button>
             </div>
-            <div class="control-group">
-                <label for="windowMin">Window Min</label>
-                <input type="range" id="windowMin" value="0" min="0" max="255" style="width: 100px;">
-            </div>
-            <div class="control-group">
-                <label for="windowMax">Window Max</label>
-                <input type="range" id="windowMax" value="255" min="0" max="255" style="width: 100px;">
-            </div>
-            <div class="control-group">
-                <label>&nbsp;</label>
-                <button id="resetWindow">Reset</button>
-            </div>
         </div>
         
         <div class="content">
@@ -442,6 +430,21 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
                     <div class="info-item">
                         <span>Dimensions:</span>
                         <span id="dimensions">-</span>
+                    </div>
+                    <div class="window-controls" style="margin-top:20px; padding-top:10px; border-top:1px solid var(--vscode-panel-border);">
+                        <h3 style="margin-bottom:8px;">Window/Level Controls</h3>
+                        <div class="control-group">
+                            <label for="windowMin">Window Min</label>
+                            <input type="range" id="windowMin" value="0" min="0" max="255" style="width: 100%;">
+                        </div>
+                        <div class="control-group">
+                            <label for="windowMax">Window Max</label>
+                            <input type="range" id="windowMax" value="255" min="0" max="255" style="width: 100%;">
+                        </div>
+                        <div class="control-group">
+                            <label>&nbsp;</label>
+                            <button id="resetWindow">Reset</button>
+                        </div>
                     </div>
                 </div>
                 
