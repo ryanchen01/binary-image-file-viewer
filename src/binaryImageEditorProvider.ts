@@ -459,6 +459,10 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
             '};'
         ].join('\n');
         const histogramWorker = new Worker(URL.createObjectURL(new Blob([workerCode],{type:'application/javascript'})));
+        histogramWorker.onerror = (error) => {
+            console.error('Histogram worker encountered an error:', error.message);
+            // Optionally, notify the user or perform recovery actions here
+        };
         let workerReq = 0;
         const workerCallbacks = new Map();
         histogramWorker.onmessage = (e)=>{const res=e.data;const cb=workerCallbacks.get(res.id);if(cb){cb(res);workerCallbacks.delete(res.id);}};
