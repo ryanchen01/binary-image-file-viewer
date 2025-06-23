@@ -54,6 +54,9 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
             enableScripts: true,
         };
 
+        // Generate a nonce for CSP
+        const nonce = getNonce();
+
         // Handle messages from the webview
         webviewPanel.webview.onDidReceiveMessage(
             async (message) => {
@@ -74,6 +77,26 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
                             message.endianness
                         );
                         break;
+                    case 'calculateSlices':
+                        try {
+                            const stats = await vscode.workspace.fs.stat(document.uri);
+                            const count = this.calculateMaxSlices(
+                                stats.size,
+                                message.width,
+                                message.height,
+                                message.dataType
+                            );
+                            webviewPanel.webview.postMessage({
+                                type: 'sliceCount',
+                                count
+                            });
+                        } catch (error) {
+                            webviewPanel.webview.postMessage({
+                                type: 'sliceCount',
+                                count: 0
+                            });
+                        }
+                        break;
                 }
             },
             undefined,
@@ -82,7 +105,7 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
 
         // Set the HTML content after registering the message listener to ensure
         // we receive the initial 'ready' message from the webview.
-        webviewPanel.webview.html = this.getHtmlForWebview(webviewPanel.webview);
+        webviewPanel.webview.html = this.getHtmlForWebview(webviewPanel.webview, nonce);
     }
 
     /**
@@ -157,7 +180,8 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
                 width,
                 height,
                 slice,
-                dataType
+                dataType,
+                endianness
             });
         } catch (error) {
             webview.postMessage({
@@ -190,12 +214,14 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
     /**
      * Generate the HTML used for the webview panel. The markup includes the UI
      * and scripts required to display and navigate image slices.
+     * @param nonce Nonce for CSP
      */
-    private getHtmlForWebview(webview: vscode.Webview): string {
+    private getHtmlForWebview(webview: vscode.Webview, nonce: string): string {
         return `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} blob:; script-src 'nonce-${nonce}' blob:; worker-src blob:; style-src 'unsafe-inline' ${webview.cspSource}; font-src ${webview.cspSource};">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Binary Image Viewer</title>
     <style>
@@ -411,12 +437,10 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
                 </div>
 
                 <div class="info-panel">
-                    <h3>Histogram</h3>
-                    <canvas id="histogramCanvas" width="256" height="100"></canvas>
+                    <h3>Windowing</h3>
                     <div class="window-controls">
                         <input type="range" id="windowMin" min="0" max="255" value="0">
                         <input type="range" id="windowMax" min="0" max="255" value="255">
-                        <button id="autoWindow">Auto-window</button>
                     </div>
                 </div>
 
@@ -427,46 +451,14 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
         </div>
     </div>
 
-    <script>
+    <script nonce="${nonce}">
         const vscode = acquireVsCodeApi();
         
         let fileInfo = null;
         let currentSliceData = null;
         let currentValues = null;
 
-        const workerCode = [
-            'self.onmessage = function(e) {',
-            '    const v = e.data.data.slice();',
-            '    let min = v[0], max = v[0];',
-            '    for (const val of v) { if (val < min) min = val; if (val > max) max = val; }',
-            '    const hist = new Array(256).fill(0);',
-            '    const binWidth = (max - min) / 256;',
-            '    for (const val of v) {',
-            '        let idx = Math.floor((val - min) / binWidth);',
-            '        if (idx < 0) idx = 0;',
-            '        if (idx > 255) idx = 255;',
-            '        hist[idx]++;',
-            '    }',
-            '    v.sort((a, b) => a - b);',
-            '    const n = v.length - 1;',
-            '    const p = (t) => {',
-            '        const i = t * n;',
-            '        const i0 = Math.floor(i);',
-            '        const i1 = Math.min(n, i0 + 1);',
-            '        const f = i - i0;',
-            '        return v[i0] * (1 - f) + v[i1] * f;',
-            '    };',
-            '    self.postMessage({ id: e.data.id, histogram: hist, auto: { min: p(0.02), max: p(0.98) } });',
-            '};'
-        ].join('\n');
-        const histogramWorker = new Worker(URL.createObjectURL(new Blob([workerCode],{type:'application/javascript'})));
-        histogramWorker.onerror = (error) => {
-            console.error('Histogram worker encountered an error:', error.message);
-            // Optionally, notify the user or perform recovery actions here
-        };
-        let workerReq = 0;
-        const workerCallbacks = new Map();
-        histogramWorker.onmessage = (e)=>{const res=e.data;const cb=workerCallbacks.get(res.id);if(cb){cb(res);workerCallbacks.delete(res.id);}};
+        // Histogram and worker code removed
         
         // DOM elements
         const widthInput = document.getElementById('width');
@@ -486,7 +478,7 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
         const histCtx = histogramCanvas.getContext('2d');
         const windowMinInput = document.getElementById('windowMin');
         const windowMaxInput = document.getElementById('windowMax');
-        const autoWindowButton = document.getElementById('autoWindow');
+        // const autoWindowButton = document.getElementById('autoWindow');
         const errorPanel = document.getElementById('errorPanel');
         const errorMessage = document.getElementById('errorMessage');
         
@@ -509,16 +501,7 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
         windowMaxInput.addEventListener('input', () => {
             if (currentValues) renderCurrent();
         });
-        autoWindowButton.addEventListener('click', () => {
-            if (currentValues) {
-                requestHistogram(currentValues).then(r => {
-                    windowMinInput.value = r.auto.min;
-                    windowMaxInput.value = r.auto.max;
-                    renderCurrent();
-                    drawHistogram(r.histogram);
-                });
-            }
-        });
+        // autoWindowButton and histogram logic removed
         
         // Slice navigation event listeners
         sliceInput.addEventListener('input', syncSliceControls);
@@ -548,6 +531,10 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
                 case 'sliceData':
                     handleSliceData(message);
                     break;
+                case 'sliceCount':
+                    numSlicesEl.textContent = String(message.count);
+                    sliceInput.max = sliceSlider.max = String(Math.max(0, message.count - 1));
+                    break;
                 case 'error':
                     showError(message.message);
                     break;
@@ -568,12 +555,10 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
             const rawData = new Uint8Array(data.data);
             const endianness = endiannessSelect.value === 'little';
             currentValues = parseDataType(rawData, dataType, endianness);
-            requestHistogram(currentValues).then(res => {
-                drawHistogram(res.histogram);
-                windowMinInput.value = res.auto.min;
-                windowMaxInput.value = res.auto.max;
-                renderCurrent();
-            });
+            const { min, max } = findMinMax(currentValues);
+            windowMinInput.value = min;
+            windowMaxInput.value = max;
+            renderCurrent();
             currentSliceEl.textContent = data.slice;
             dimensionsEl.textContent = data.width + ' x ' + data.height;
             hideError();
@@ -766,33 +751,13 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
         function findMinMax(values) {
             let min = values[0];
             let max = values[0];
-            
             for (let i = 1; i < values.length; i++) {
                 if (values[i] < min) min = values[i];
                 if (values[i] > max) max = values[i];
             }
-            
             return { min, max };
         }
-
-        function requestHistogram(values) {
-            return new Promise(resolve => {
-                const id = workerReq++;
-                workerCallbacks.set(id, resolve);
-                histogramWorker.postMessage({ id, data: values });
-            });
-        }
-
-        function drawHistogram(hist) {
-            histCtx.clearRect(0, 0, histogramCanvas.width, histogramCanvas.height);
-            const maxCount = Math.max(...hist);
-            const barWidth = histogramCanvas.width / hist.length;
-            histCtx.fillStyle = '#8f8f8f';
-            for (let i = 0; i < hist.length; i++) {
-                const h = (hist[i] / maxCount) * histogramCanvas.height;
-                histCtx.fillRect(i * barWidth, histogramCanvas.height - h, barWidth, h);
-            }
-        }
+        // requestHistogram and drawHistogram removed
         
         function showError(message) {
             errorMessage.textContent = message;
@@ -811,20 +776,12 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
             const dataType = dataTypeSelect.value;
             
             if (width > 0 && height > 0) {
-                const bytesPerPixel = getBytesPerPixel(dataType);
-                const sliceSize = width * height * bytesPerPixel;
-                const numSlices = Math.floor(fileInfo.fileSize / sliceSize);
-                const maxSlice = Math.max(0, numSlices - 1);
-                
-                numSlicesEl.textContent = numSlices.toString();
-                sliceInput.max = maxSlice.toString();
-                sliceSlider.max = maxSlice.toString();
-                
-                // Reset slice to 0 if current slice exceeds available slices
-                if (parseInt(sliceInput.value) >= numSlices) {
-                    sliceInput.value = '0';
-                    sliceSlider.value = '0';
-                }
+                vscode.postMessage({
+                    type: 'calculateSlices',
+                    width,
+                    height,
+                    dataType
+                });
             } else {
                 numSlicesEl.textContent = '-';
                 sliceInput.max = '';
@@ -863,4 +820,16 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
 </body>
 </html>`;
     }
+}
+
+/**
+ * Generate a nonce for CSP.
+ */
+function getNonce(length = 32): string {
+    const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    let nonce = '';
+    for (let i = 0; i < length; i++) {
+        nonce += possible.charAt(Math.floor(Math.random() * possible.length));
+    }
+    return nonce;
 }

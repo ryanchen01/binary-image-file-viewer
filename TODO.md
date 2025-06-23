@@ -12,7 +12,6 @@
 - [x] Develop slice navigation control: slider, mouse scroll, ←/→ keyboard shortcuts
 
 ## Milestone 3 (Week 3)
-- [x] Integrate `HistogramWorker` Web Worker for real-time histogram computation
 - [x] Implement window/level controls with draggable min/max handles
 - [x] Add “Auto-window” button (percentile-based)
 
