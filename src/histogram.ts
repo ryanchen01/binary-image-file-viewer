@@ -2,11 +2,15 @@ export function computeHistogram(values: number[], numBins = 256, min?: number, 
     if (values.length === 0) {
         return new Array(numBins).fill(0);
     }
-    if (min === undefined) {
-        min = Math.min(...values);
-    }
-    if (max === undefined) {
-        max = Math.max(...values);
+    if (min === undefined || max === undefined) {
+        let computedMin = Infinity;
+        let computedMax = -Infinity;
+        for (const value of values) {
+            if (value < computedMin) computedMin = value;
+            if (value > computedMax) computedMax = value;
+        }
+        if (min === undefined) min = computedMin;
+        if (max === undefined) max = computedMax;
     }
     if (min === max) {
         max = min + 1; // avoid divide by zero
