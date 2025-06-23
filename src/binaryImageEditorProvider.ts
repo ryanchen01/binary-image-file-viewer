@@ -279,6 +279,19 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
             border: 1px solid var(--vscode-panel-border);
             border-radius: 4px;
         }
+
+        .window-controls {
+            display: flex;
+            gap: 5px;
+            align-items: center;
+            margin-top: 10px;
+        }
+
+        #histogramCanvas {
+            width: 100%;
+            height: 100px;
+            border: 1px solid var(--vscode-panel-border);
+        }
         
         .info-panel h3 {
             margin: 0 0 10px 0;
@@ -395,7 +408,17 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
                         <span id="dimensions">-</span>
                     </div>
                 </div>
-                
+
+                <div class="info-panel">
+                    <h3>Histogram</h3>
+                    <canvas id="histogramCanvas" width="256" height="100"></canvas>
+                    <div class="window-controls">
+                        <input type="range" id="windowMin" min="0" max="255" value="0">
+                        <input type="range" id="windowMax" min="0" max="255" value="255">
+                        <button id="autoWindow">Auto-window</button>
+                    </div>
+                </div>
+
                 <div id="errorPanel" class="error" style="display: none;">
                     <div id="errorMessage"></div>
                 </div>
@@ -408,6 +431,37 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
         
         let fileInfo = null;
         let currentSliceData = null;
+        let currentValues = null;
+
+        const workerCode = [
+            'self.onmessage = function(e) {',
+            '    const v = e.data.data.slice();',
+            '    let min = v[0], max = v[0];',
+            '    for (const val of v) { if (val < min) min = val; if (val > max) max = val; }',
+            '    const hist = new Array(256).fill(0);',
+            '    const binWidth = (max - min) / 256;',
+            '    for (const val of v) {',
+            '        let idx = Math.floor((val - min) / binWidth);',
+            '        if (idx < 0) idx = 0;',
+            '        if (idx > 255) idx = 255;',
+            '        hist[idx]++;',
+            '    }',
+            '    v.sort((a, b) => a - b);',
+            '    const n = v.length - 1;',
+            '    const p = (t) => {',
+            '        const i = t * n;',
+            '        const i0 = Math.floor(i);',
+            '        const i1 = Math.min(n, i0 + 1);',
+            '        const f = i - i0;',
+            '        return v[i0] * (1 - f) + v[i1] * f;',
+            '    };',
+            '    self.postMessage({ id: e.data.id, histogram: hist, auto: { min: p(0.02), max: p(0.98) } });',
+            '};'
+        ].join('\n');
+        const histogramWorker = new Worker(URL.createObjectURL(new Blob([workerCode],{type:'application/javascript'})));
+        let workerReq = 0;
+        const workerCallbacks = new Map();
+        histogramWorker.onmessage = (e)=>{const res=e.data;const cb=workerCallbacks.get(res.id);if(cb){cb(res);workerCallbacks.delete(res.id);}};
         
         // DOM elements
         const widthInput = document.getElementById('width');
@@ -419,6 +473,11 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
         const loadSliceButton = document.getElementById('loadSlice');
         const canvas = document.getElementById('imageCanvas');
         const ctx = canvas.getContext('2d');
+        const histogramCanvas = document.getElementById('histogramCanvas');
+        const histCtx = histogramCanvas.getContext('2d');
+        const windowMinInput = document.getElementById('windowMin');
+        const windowMaxInput = document.getElementById('windowMax');
+        const autoWindowButton = document.getElementById('autoWindow');
         const errorPanel = document.getElementById('errorPanel');
         const errorMessage = document.getElementById('errorMessage');
         
@@ -434,6 +493,23 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
         widthInput.addEventListener('input', updateSliceInfo);
         heightInput.addEventListener('input', updateSliceInfo);
         dataTypeSelect.addEventListener('change', updateSliceInfo);
+
+        windowMinInput.addEventListener('input', () => {
+            if (currentValues) renderCurrent();
+        });
+        windowMaxInput.addEventListener('input', () => {
+            if (currentValues) renderCurrent();
+        });
+        autoWindowButton.addEventListener('click', () => {
+            if (currentValues) {
+                requestHistogram(currentValues).then(r => {
+                    windowMinInput.value = r.auto.min;
+                    windowMaxInput.value = r.auto.max;
+                    renderCurrent();
+                    drawHistogram(r.histogram);
+                });
+            }
+        });
         
         // Slice navigation event listeners
         sliceInput.addEventListener('input', syncSliceControls);
@@ -479,9 +555,18 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
         
         function handleSliceData(data) {
             currentSliceData = data;
-            renderSlice(data);
+            const { width, height, dataType } = data;
+            const rawData = new Uint8Array(data.data);
+            const endianness = endiannessSelect.value === 'little';
+            currentValues = parseDataType(rawData, dataType, endianness);
+            requestHistogram(currentValues).then(res => {
+                drawHistogram(res.histogram);
+                windowMinInput.value = res.auto.min;
+                windowMaxInput.value = res.auto.max;
+                renderCurrent();
+            });
             currentSliceEl.textContent = data.slice;
-            dimensionsEl.textContent = \`\${data.width} × \${data.height}\`;
+            dimensionsEl.textContent = data.width + ' x ' + data.height;
             hideError();
         }
         
@@ -566,37 +651,33 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
             loadSlice();
         }
         
-        function renderSlice(data) {
-            const { width, height, dataType } = data;
-            const rawData = new Uint8Array(data.data);
-            const endianness = endiannessSelect.value === 'little';
-            
-            // Set canvas actual size (for drawing)
+        function renderCurrent() {
+            if (!currentValues) return;
+            const width = parseInt(widthInput.value);
+            const height = parseInt(heightInput.value);
+
             canvas.width = width;
             canvas.height = height;
-            
-            // Create image data
+
             const imageData = ctx.createImageData(width, height);
             const pixels = imageData.data;
-            
-            // Convert binary data to grayscale pixels
-            const values = parseDataType(rawData, dataType, endianness);
-            const { min, max } = findMinMax(values);
-            
-            for (let i = 0; i < values.length; i++) {
-                const normalized = (values[i] - min) / (max - min);
+
+            const wMin = parseFloat(windowMinInput.value);
+            const wMax = parseFloat(windowMaxInput.value);
+
+            for (let i = 0; i < currentValues.length; i++) {
+                let normalized = (currentValues[i] - wMin) / (wMax - wMin);
+                if (normalized < 0) normalized = 0;
+                if (normalized > 1) normalized = 1;
                 const grayscale = Math.floor(normalized * 255);
-                
                 const pixelIndex = i * 4;
-                pixels[pixelIndex] = grayscale;     // R
-                pixels[pixelIndex + 1] = grayscale; // G
-                pixels[pixelIndex + 2] = grayscale; // B
-                pixels[pixelIndex + 3] = 255;       // A
+                pixels[pixelIndex] = grayscale;
+                pixels[pixelIndex + 1] = grayscale;
+                pixels[pixelIndex + 2] = grayscale;
+                pixels[pixelIndex + 3] = 255;
             }
-            
+
             ctx.putImageData(imageData, 0, 0);
-            
-            // Scale canvas to fit container after rendering
             scaleCanvasToFit();
         }
         
@@ -675,6 +756,25 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
             }
             
             return { min, max };
+        }
+
+        function requestHistogram(values) {
+            return new Promise(resolve => {
+                const id = workerReq++;
+                workerCallbacks.set(id, resolve);
+                histogramWorker.postMessage({ id, data: values });
+            });
+        }
+
+        function drawHistogram(hist) {
+            histCtx.clearRect(0, 0, histogramCanvas.width, histogramCanvas.height);
+            const maxCount = Math.max(...hist);
+            const barWidth = histogramCanvas.width / hist.length;
+            histCtx.fillStyle = '#8f8f8f';
+            for (let i = 0; i < hist.length; i++) {
+                const h = (hist[i] / maxCount) * histogramCanvas.height;
+                histCtx.fillRect(i * barWidth, histogramCanvas.height - h, barWidth, h);
+            }
         }
         
         function showError(message) {
