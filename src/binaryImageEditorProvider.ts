@@ -470,12 +470,13 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
         const loadSliceButton = document.getElementById('loadSlice');
         const canvas = document.getElementById('imageCanvas');
         const ctx = canvas.getContext('2d');
-        const histogramCanvas = document.getElementById('histogramCanvas') as HTMLCanvasElement;
+        // Histogram display is optional. If the element is missing we simply
+        // skip histogram related functionality instead of aborting the script.
+        const histogramCanvas = document.getElementById('histogramCanvas') as HTMLCanvasElement | null;
         if (!histogramCanvas) {
-            console.error("Element with ID 'histogramCanvas' not found in the DOM.");
-            return;
+            console.warn("Element with ID 'histogramCanvas' not found in the DOM; histogram disabled.");
         }
-        const histCtx = histogramCanvas.getContext('2d');
+        const histCtx = histogramCanvas ? histogramCanvas.getContext('2d') : null;
         const windowMinInput = document.getElementById('windowMin');
         const windowMaxInput = document.getElementById('windowMax');
         // const autoWindowButton = document.getElementById('autoWindow');
