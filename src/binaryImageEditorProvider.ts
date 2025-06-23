@@ -8,6 +8,8 @@ import * as path from 'path';
  * them to the webview for visualization.
  */
 export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorProvider {
+    private fileCache = new Map<string, Uint8Array>();
+
     constructor(private readonly context: vscode.ExtensionContext) {}
 
     /**
@@ -38,9 +40,7 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
             uri,
             dispose: () => {}
         };
-    }
-
-    /**
+    }    /**
      * Resolve the custom editor by wiring up the webview and responding to
      * messages from the client side.
      */
@@ -82,6 +82,11 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
             undefined,
             this.context.subscriptions
         );
+
+        // Clean up cache when panel is disposed
+        webviewPanel.onDidDispose(() => {
+            this.fileCache.delete(document.uri.toString());
+        });
     }
 
     /**
@@ -137,10 +142,8 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
         try {
             const bytesPerPixel = this.getBytesPerPixel(dataType);
             const sliceSize = width * height * bytesPerPixel;
-            const offset = slice * sliceSize;
-
-            // Read the file data
-            const fileData = await vscode.workspace.fs.readFile(uri);
+            const offset = slice * sliceSize;            // Get file data from cache (reads file only once)
+            const fileData = await this.getFileData(uri);
             
             if (offset + sliceSize > fileData.length) {
                 throw new Error('Slice extends beyond file size');
@@ -164,6 +167,23 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
                 message: `Failed to read slice: ${error}`
             });
         }
+    }
+
+    /**
+     * Get the file data from cache or read it from disk if not cached.
+     * This ensures we only read the file once and reuse the data for all slice operations.
+     */
+    private async getFileData(uri: vscode.Uri): Promise<Uint8Array> {
+        const cacheKey = uri.toString();
+        
+        if (this.fileCache.has(cacheKey)) {
+            return this.fileCache.get(cacheKey)!;
+        }
+
+        // Read the file and cache it
+        const fileData = await vscode.workspace.fs.readFile(uri);
+        this.fileCache.set(cacheKey, fileData);
+        return fileData;
     }
 
     /**
@@ -766,6 +786,10 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
             windowMaxInput.max = sliceMax;
             windowMinInput.value = windowMin;
             windowMaxInput.value = windowMax;
+            const dataRange = sliceMax - sliceMin;
+            const step = dataRange / 255;
+            windowMinInput.step = step;
+            windowMaxInput.step = step;
         }
 
         function updateWindow() {
