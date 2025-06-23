@@ -12,8 +12,8 @@
 - [x] Develop slice navigation control: slider, mouse scroll, ←/→ keyboard shortcuts
 
 ## Milestone 3
-- [ ] Implement window/level controls with draggable min/max handles
-- [ ] Add “Reset” button to restore original window/level (default to full range)
+ - [x] Implement window/level controls with draggable min/max handles
+ - [x] Add “Reset” button to restore original window/level (default to full range)
 
 ## Milestone 4
 - [ ] Add “Auto-window” button (percentile-based, 90% range)

@@ -24,6 +24,21 @@ describe('BinaryImageEditorProvider', () => {
         assert.strictEqual(slices, 4);
     });
 
+    it('applyWindowLevel maps values into 0-255 range', () => {
+        const asAny = provider as any;
+        const values = [0, 50, 100, 150];
+        const mapped = asAny.applyWindowLevel(values, 0, 100);
+        assert.deepStrictEqual(Array.from(mapped), [0, 128, 255, 255]);
+    });
+
+    it('generated HTML includes window controls', () => {
+        const asAny = provider as any;
+        const html: string = asAny.getHtmlForWebview({} as any);
+        assert.ok(html.includes('id="windowMin"'));
+        assert.ok(html.includes('id="windowMax"'));
+        assert.ok(html.includes('id="resetWindow"'));
+    });
+
     it('openCustomDocument returns a document with the same URI', async () => {
         const uri = vscode.Uri.file('/tmp/test.raw');
         const doc = await provider.openCustomDocument(uri, {} as any, {} as any);
