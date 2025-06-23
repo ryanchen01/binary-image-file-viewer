@@ -54,9 +54,6 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
             enableScripts: true,
         };
 
-        // Set the HTML content
-        webviewPanel.webview.html = this.getHtmlForWebview(webviewPanel.webview);
-
         // Handle messages from the webview
         webviewPanel.webview.onDidReceiveMessage(
             async (message) => {
@@ -82,6 +79,10 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
             undefined,
             this.context.subscriptions
         );
+
+        // Set the HTML content after registering the message listener to ensure
+        // we receive the initial 'ready' message from the webview.
+        webviewPanel.webview.html = this.getHtmlForWebview(webviewPanel.webview);
     }
 
     /**
