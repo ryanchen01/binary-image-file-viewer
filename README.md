@@ -99,7 +99,6 @@ Endianness: Little-Endian
 ## Roadmap
 
 ### Milestone 3 (In Development)
-- [ ] Real-time histogram computation
 - [ ] Window/level controls for contrast adjustment
 - [ ] Auto-windowing based on percentiles
 
