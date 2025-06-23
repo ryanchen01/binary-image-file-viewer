@@ -584,9 +584,17 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
             const slice = parseInt(sliceInput.value);
             const dataType = dataTypeSelect.value;
             const endianness = endiannessSelect.value === 'little';
-            
-            if (width <= 0 || height <= 0 || slice < 0) {
-                showError('Please enter valid positive values for width, height, and slice.');
+
+            const invalid =
+                Number.isNaN(width) ||
+                Number.isNaN(height) ||
+                Number.isNaN(slice) ||
+                width <= 0 ||
+                height <= 0 ||
+                slice < 0;
+
+            if (invalid) {
+                showError('Please enter valid positive integer values for width, height, and slice.');
                 return;
             }
             
