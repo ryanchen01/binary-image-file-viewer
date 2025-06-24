@@ -751,27 +751,68 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
             loadSlice();
         }
         
+        // Optimized renderSlice: single-pass, no intermediate arrays
         function renderSlice(data) {
             const { width, height, dataType } = data;
             const rawData = new Uint8Array(data.data);
             const endianness = endiannessSelect.value === 'little';
-            
+
             // Set canvas actual size (for drawing)
             canvas.width = width;
             canvas.height = height;
-            
+
             // Create image data
             const imageData = ctx.createImageData(width, height);
             const pixels = imageData.data;
-            
-            // Convert binary data to grayscale pixels
-            const values = parseDataType(rawData, dataType, endianness);
+            const view = new DataView(rawData.buffer, rawData.byteOffset, rawData.byteLength);
 
-            // Use global windowMin/windowMax for mapping
-            const mapped = applyWindowLevel(values, windowMin, windowMax);
+            let bytesPerPixel = 1;
+            let getValue;
+            switch (dataType) {
+                case 'uint8':
+                    bytesPerPixel = 1;
+                    getValue = (offset) => view.getUint8(offset);
+                    break;
+                case 'int8':
+                    bytesPerPixel = 1;
+                    getValue = (offset) => view.getInt8(offset);
+                    break;
+                case 'uint16':
+                    bytesPerPixel = 2;
+                    getValue = (offset) => view.getUint16(offset, endianness);
+                    break;
+                case 'int16':
+                    bytesPerPixel = 2;
+                    getValue = (offset) => view.getInt16(offset, endianness);
+                    break;
+                case 'uint32':
+                    bytesPerPixel = 4;
+                    getValue = (offset) => view.getUint32(offset, endianness);
+                    break;
+                case 'int32':
+                    bytesPerPixel = 4;
+                    getValue = (offset) => view.getInt32(offset, endianness);
+                    break;
+                case 'float32':
+                    bytesPerPixel = 4;
+                    getValue = (offset) => view.getFloat32(offset, endianness);
+                    break;
+                case 'float64':
+                    bytesPerPixel = 8;
+                    getValue = (offset) => view.getFloat64(offset, endianness);
+                    break;
+                default:
+                    throw new Error(\`Unsupported data type: \${dataType}\`);
+            }
 
-            for (let i = 0; i < mapped.length; i++) {
-                const grayscale = mapped[i];
+            const range = windowMax - windowMin || 1;
+            const numPixels = width * height;
+            for (let i = 0; i < numPixels; i++) {
+                const value = getValue(i * bytesPerPixel);
+                let normalized = (value - windowMin) / range;
+                if (normalized < 0) normalized = 0;
+                else if (normalized > 1) normalized = 1;
+                const grayscale = Math.round(normalized * 255);
 
                 const pixelIndex = i * 4;
                 pixels[pixelIndex] = grayscale;     // R
@@ -779,9 +820,9 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
                 pixels[pixelIndex + 2] = grayscale; // B
                 pixels[pixelIndex + 3] = 255;       // A
             }
-            
+
             ctx.putImageData(imageData, 0, 0);
-            
+
             // Scale canvas to fit container after rendering
             scaleCanvasToFit();
         }
@@ -810,46 +851,7 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
             }
         }
         
-        function parseDataType(buffer, dataType, endianness = true) {
-            const view = new DataView(buffer.buffer);
-            const values = [];
-            let bytesPerPixel, getValue;
-            
-            switch (dataType) {
-                case 'uint8':
-                    bytesPerPixel = 1;
-                    getValue = (offset) => view.getUint8(offset);
-                    break;
-                case 'uint16':
-                    bytesPerPixel = 2;
-                    getValue = (offset) => view.getUint16(offset, endianness);
-                    break;
-                case 'int16':
-                    bytesPerPixel = 2;
-                    getValue = (offset) => view.getInt16(offset, endianness);
-                    break;
-                case 'float32':
-                    bytesPerPixel = 4;
-                    getValue = (offset) => view.getFloat32(offset, endianness);
-                    break;
-                case 'int32':
-                    bytesPerPixel = 4;
-                    getValue = (offset) => view.getInt32(offset, endianness);
-                    break;
-                case 'float64':
-                    bytesPerPixel = 8;
-                    getValue = (offset) => view.getFloat64(offset, endianness);
-                    break;
-                default:
-                    throw new Error(\`Unsupported data type: \${dataType}\`);
-            }
-            
-            for (let i = 0; i < buffer.length; i += bytesPerPixel) {
-                values.push(getValue(i));
-            }
-            
-            return values;
-        }
+        // parseDataType is now inlined in renderSlice for efficiency
         
         function findMinMax(values) {
             let min = values[0];
@@ -863,17 +865,7 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
             return { min, max };
         }
 
-        function applyWindowLevel(values, wMin, wMax) {
-            const range = wMax - wMin || 1;
-            const out = new Uint8ClampedArray(values.length);
-            for (let i = 0; i < values.length; i++) {
-                let n = (values[i] - wMin) / range;
-                if (n < 0) n = 0;
-                else if (n > 1) n = 1;
-                out[i] = Math.round(n * 255);
-            }
-            return out;
-        }
+        // applyWindowLevel is now inlined in renderSlice for efficiency
 
         function updateWindowControls() {
             windowMinInput.min = sliceMin;
