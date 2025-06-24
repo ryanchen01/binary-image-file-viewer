@@ -674,10 +674,14 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
                 case 'windowData':
                     sliceMin = message.windowMin;
                     sliceMax = message.windowMax;
-                    windowMin = sliceMin;
-                    windowMax = sliceMax;
+                    if (windowMin === null || windowMax === null) {
+                        windowMin = sliceMin;
+                        windowMax = sliceMax;
+                    }
                     updateWindowControls();
-                    resetWindow();
+                    if (currentSliceData) {
+                        renderSlice(currentSliceData);
+                    }
                     break;
                 case 'error':
                     showError(message.message);
@@ -909,13 +913,19 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
         // applyWindowLevel is now inlined in renderSlice for efficiency
 
         function updateWindowControls() {
-            windowMinInput.min = sliceMin;
-            windowMinInput.max = sliceMax;
-            windowMaxInput.min = sliceMin;
-            windowMaxInput.max = sliceMax;
-            windowMinInput.value = windowMin;
-            windowMaxInput.value = windowMax;
-            const dataRange = sliceMax - sliceMin;
+            let minVal = sliceMin;
+            let maxVal = sliceMax;
+            if (sliceMin === sliceMax) {
+                minVal = sliceMin - 0.5;
+                maxVal = sliceMax + 0.5;
+            }
+            windowMinInput.min = minVal;
+            windowMinInput.max = maxVal;
+            windowMaxInput.min = minVal;
+            windowMaxInput.max = maxVal;
+            windowMinInput.value = windowMin !== null ? windowMin : minVal;
+            windowMaxInput.value = windowMax !== null ? windowMax : maxVal;
+            const dataRange = maxVal - minVal;
             const step = dataRange / 255;
             windowMinInput.step = step;
             windowMaxInput.step = step;
