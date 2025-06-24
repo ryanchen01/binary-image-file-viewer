@@ -192,14 +192,18 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
     private getBytesPerPixel(dataType: string): number {
         switch (dataType) {
             case 'uint8':
+            case 'int8':
                 return 1;
             case 'uint16':
             case 'int16':
                 return 2;
             case 'float32':
+            case 'uint32':
             case 'int32':
                 return 4;
             case 'float64':
+            case 'uint64':
+            case 'int64':
                 return 8;
             default:
                 return 4; // default to float32
@@ -395,11 +399,15 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
                 <label for="dataType">Data Type</label>
                 <select id="dataType">
                     <option value="float32">float32</option>
+                    <option value="float64">float64</option>
                     <option value="uint8">uint8</option>
+                    <option value="int8">int8</option>
                     <option value="uint16">uint16</option>
                     <option value="int16">int16</option>
+                    <option value="uint32">uint32</option>
                     <option value="int32">int32</option>
-                    <option value="float64">float64</option>
+                    <option value="uint64">uint64</option>
+                    <option value="int64">int64</option>
                 </select>
             </div>
             <div class="control-group">
