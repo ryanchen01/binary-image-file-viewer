@@ -98,12 +98,7 @@ Endianness: Little-Endian
 
 ## Roadmap
 
-### Milestone 3 (In Development)
-- [ ] Window/level controls for contrast adjustment
-- [ ] Auto-windowing based on percentiles
-
 ### Milestone 4 (Planned)
-- [ ] Per-file settings persistence
 - [ ] Enhanced error handling
 
 ### Future Enhancements

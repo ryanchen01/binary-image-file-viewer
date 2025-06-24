@@ -16,20 +16,16 @@
  - [x] Add “Reset” button to restore original window/level (default to full range)
 
 ## Milestone 4
-- [ ] Add “Auto-window” button (percentile-based, 90% range)
+- [ ] Implement graceful error handling (invalid metadata, OOM, read errors)
 
 ## Milestone 5
-- [ ] Implement graceful error handling (invalid metadata, OOM, read errors)
-- [ ] Wire up undo/redo for window adjustments
-
-## Milestone 6
 - [ ] Cross-platform testing (Windows, macOS, Linux)
 - [ ] Performance tuning: 
   - ensure slice render <100 ms at 2048×2048  
 - [ ] Accessibility audit: keyboard navigation, color-contrast, tooltips
 - [ ] Group advanced controls under collapsible “Advanced” panel
 
-## Milestone 7
+## Milestone 6
 - [ ] Write unit & integration tests (≥90% coverage)
 - [ ] Update documentation (README, vsc-extension-quickstart.md)
 - [ ] Package and validate `.vsix` installation on all platforms
