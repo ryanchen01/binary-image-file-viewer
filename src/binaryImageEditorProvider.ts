@@ -9,7 +9,7 @@ import * as path from 'path';
  */
 export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorProvider {
     private fileCache = new Map<string, Uint8Array>();
-    private static readonly MAX_FILE_SIZE = 512 * 1024 * 1024; // 512 MB cap to prevent OOM
+    private static readonly MAX_FILE_SIZE = 1024 * 1024 * 1024; // 1024 MB cap to prevent OOM
 
     constructor(private readonly context: vscode.ExtensionContext) {}
 
