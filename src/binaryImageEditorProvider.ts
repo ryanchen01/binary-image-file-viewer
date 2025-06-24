@@ -842,6 +842,14 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
                     bytesPerPixel = 4;
                     getValue = (offset) => view.getFloat32(offset, endianness);
                     break;
+                case 'uint64':
+                    bytesPerPixel = 8;
+                    getValue = (offset) => view.getUint64(offset, endianness);
+                    break;
+                case 'int64':
+                    bytesPerPixel = 8;
+                    getValue = (offset) => view.getInt64(offset, endianness);
+                    break;
                 case 'float64':
                     bytesPerPixel = 8;
                     getValue = (offset) => view.getFloat64(offset, endianness);
@@ -1006,13 +1014,17 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
         function getBytesPerPixel(dataType) {
             switch (dataType) {
                 case 'uint8':
+                case 'int8':
                     return 1;
                 case 'uint16':
                 case 'int16':
                     return 2;
                 case 'float32':
+                case 'uint32':
                 case 'int32':
                     return 4;
+                case 'uint64':
+                case 'int64':
                 case 'float64':
                     return 8;
                 default:
