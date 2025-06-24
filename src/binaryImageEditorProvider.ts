@@ -9,6 +9,7 @@ import * as path from 'path';
  */
 export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorProvider {
     private fileCache = new Map<string, Uint8Array>();
+    private static readonly MAX_FILE_SIZE = 512 * 1024 * 1024; // 512 MB cap to prevent OOM
 
     constructor(private readonly context: vscode.ExtensionContext) {}
 
@@ -118,6 +119,9 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
     private async sendFileData(webview: vscode.Webview, uri: vscode.Uri): Promise<void> {
         try {
             const stats = await vscode.workspace.fs.stat(uri);
+            if (stats.size > BinaryImageEditorProvider.MAX_FILE_SIZE) {
+                throw new Error(`File size ${stats.size} exceeds safe limit`);
+            }
             webview.postMessage({
                 type: 'fileInfo',
                 fileSize: stats.size,
@@ -162,11 +166,15 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
         endianness: boolean = true
     ): Promise<void> {
         try {
+            this.validateMetadata(width, height, dataType);
             const bytesPerPixel = this.getBytesPerPixel(dataType);
             const sliceSize = width * height * bytesPerPixel;
             const offset = slice * sliceSize;            // Get file data from cache (reads file only once)
             const fileData = await this.getFileData(uri);
-            
+
+            if (slice < 0) {
+                throw new Error('Slice index must be non-negative');
+            }
             if (offset + sliceSize > fileData.length) {
                 throw new Error('Slice extends beyond file size');
             }
@@ -197,15 +205,24 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
      */
     private async getFileData(uri: vscode.Uri): Promise<Uint8Array> {
         const cacheKey = uri.toString();
-        
+
         if (this.fileCache.has(cacheKey)) {
             return this.fileCache.get(cacheKey)!;
         }
 
-        // Read the file and cache it
-        const fileData = await vscode.workspace.fs.readFile(uri);
-        this.fileCache.set(cacheKey, fileData);
-        return fileData;
+        try {
+            const stats = await vscode.workspace.fs.stat(uri);
+            if (stats.size > BinaryImageEditorProvider.MAX_FILE_SIZE) {
+                throw new Error(`File size ${stats.size} exceeds safe limit`);
+            }
+
+            // Read the file and cache it
+            const fileData = await vscode.workspace.fs.readFile(uri);
+            this.fileCache.set(cacheKey, fileData);
+            return fileData;
+        } catch (err) {
+            throw new Error(`Unable to read file: ${err}`);
+        }
     }
 
     /**
@@ -233,6 +250,21 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
     }
 
     /**
+     * Validate user-provided metadata before reading from the file.
+     */
+    private validateMetadata(width: number, height: number, dataType: string): void {
+        if (!Number.isFinite(width) || width <= 0 || !Number.isFinite(height) || height <= 0) {
+            throw new Error('Invalid width or height');
+        }
+        const supported = [
+            'uint8', 'int8', 'uint16', 'int16', 'uint32', 'int32', 'float32', 'float64', 'uint64', 'int64'
+        ];
+        if (!supported.includes(dataType)) {
+            throw new Error(`Unsupported data type: ${dataType}`);
+        }
+    }
+
+    /**
      * Compute the global min and max for the entire image volume.
      */
     private async computeGlobalWindow(
@@ -242,16 +274,18 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
         dataType: string,
         endianness: boolean = true
     ): Promise<{ windowMin: number; windowMax: number }> {
-        const fileData = await this.getFileData(uri);
-        const bytesPerPixel = this.getBytesPerPixel(dataType);
-        const numPixels = Math.floor(fileData.length / bytesPerPixel);
-        const view = new DataView(fileData.buffer, fileData.byteOffset, fileData.byteLength);
-        let min: number | undefined = undefined;
-        let max: number | undefined = undefined;
-        for (let i = 0; i < numPixels; i++) {
-            let value: number;
-            const offset = i * bytesPerPixel;
-            switch (dataType) {
+        try {
+            this.validateMetadata(width, height, dataType);
+            const fileData = await this.getFileData(uri);
+            const bytesPerPixel = this.getBytesPerPixel(dataType);
+            const numPixels = Math.floor(fileData.length / bytesPerPixel);
+            const view = new DataView(fileData.buffer, fileData.byteOffset, fileData.byteLength);
+            let min: number | undefined = undefined;
+            let max: number | undefined = undefined;
+            for (let i = 0; i < numPixels; i++) {
+                let value: number;
+                const offset = i * bytesPerPixel;
+                switch (dataType) {
                 case 'uint8':
                     value = view.getUint8(offset);
                     break;
@@ -279,11 +313,18 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
                 default:
                     value = view.getFloat32(offset, endianness);
                     break;
+                }
+                if (min === undefined || value < min) {
+                    min = value;
+                }
+                if (max === undefined || value > max) {
+                    max = value;
+                }
             }
-            if (min === undefined || value < min) min = value;
-            if (max === undefined || value > max) max = value;
+            return { windowMin: min ?? 0, windowMax: max ?? 0 };
+        } catch (err) {
+            throw new Error(`Failed to compute window: ${err}`);
         }
-        return { windowMin: min ?? 0, windowMax: max ?? 0 };
     }
 
     /**

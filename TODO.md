@@ -16,7 +16,7 @@
  - [x] Add “Reset” button to restore original window/level (default to full range)
 
 ## Milestone 4
-- [ ] Implement graceful error handling (invalid metadata, OOM, read errors)
+- [x] Implement graceful error handling (invalid metadata, OOM, read errors)
 
 ## Milestone 5
 - [ ] Cross-platform testing (Windows, macOS, Linux)

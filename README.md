@@ -99,7 +99,7 @@ Endianness: Little-Endian
 ## Roadmap
 
 ### Milestone 4 (Planned)
-- [ ] Enhanced error handling
+- [x] Enhanced error handling
 
 ### Future Enhancements
 - [ ] MIP rendering
