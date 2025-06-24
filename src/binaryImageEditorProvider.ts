@@ -77,6 +77,28 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
                             message.endianness
                         );
                         break;
+                    case 'computeGlobalWindow':
+                        // Compute global min/max for the entire image
+                        try {
+                            const { windowMin, windowMax } = await this.computeGlobalWindow(
+                                document.uri,
+                                message.width,
+                                message.height,
+                                message.dataType,
+                                message.endianness
+                            );
+                            webviewPanel.webview.postMessage({
+                                type: 'windowData',
+                                windowMin,
+                                windowMax
+                            });
+                        } catch (error) {
+                            webviewPanel.webview.postMessage({
+                                type: 'error',
+                                message: `Failed to compute global window: ${error}`
+                            });
+                        }
+                        break;
                 }
             },
             undefined,
@@ -208,6 +230,60 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
             default:
                 return 4; // default to float32
         }
+    }
+
+    /**
+     * Compute the global min and max for the entire image volume.
+     */
+    private async computeGlobalWindow(
+        uri: vscode.Uri,
+        width: number,
+        height: number,
+        dataType: string,
+        endianness: boolean = true
+    ): Promise<{ windowMin: number; windowMax: number }> {
+        const fileData = await this.getFileData(uri);
+        const bytesPerPixel = this.getBytesPerPixel(dataType);
+        const numPixels = Math.floor(fileData.length / bytesPerPixel);
+        const view = new DataView(fileData.buffer, fileData.byteOffset, fileData.byteLength);
+        let min: number | undefined = undefined;
+        let max: number | undefined = undefined;
+        for (let i = 0; i < numPixels; i++) {
+            let value: number;
+            const offset = i * bytesPerPixel;
+            switch (dataType) {
+                case 'uint8':
+                    value = view.getUint8(offset);
+                    break;
+                case 'int8':
+                    value = view.getInt8(offset);
+                    break;
+                case 'uint16':
+                    value = view.getUint16(offset, endianness);
+                    break;
+                case 'int16':
+                    value = view.getInt16(offset, endianness);
+                    break;
+                case 'uint32':
+                    value = view.getUint32(offset, endianness);
+                    break;
+                case 'int32':
+                    value = view.getInt32(offset, endianness);
+                    break;
+                case 'float32':
+                    value = view.getFloat32(offset, endianness);
+                    break;
+                case 'float64':
+                    value = view.getFloat64(offset, endianness);
+                    break;
+                default:
+                    value = view.getFloat32(offset, endianness);
+                    break;
+            }
+            if (min === undefined || value < min) min = value;
+            if (max === undefined || value > max) max = value;
+        }
+        return { windowMin: min ?? 0, windowMax: max ?? 0 };
     }
 
     /**
@@ -492,6 +568,7 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
         let sliceMax = 0;
         let windowMin = null;
         let windowMax = null;
+        let globalComputed = false;
         
         // DOM elements
         const widthInput = document.getElementById('width');
@@ -553,6 +630,14 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
                 case 'sliceData':
                     handleSliceData(message);
                     break;
+                case 'windowData':
+                    sliceMin = message.windowMin;
+                    sliceMax = message.windowMax;
+                    windowMin = sliceMin;
+                    windowMax = sliceMax;
+                    updateWindowControls();
+                    resetWindow();
+                    break;
                 case 'error':
                     showError(message.message);
                     break;
@@ -564,6 +649,16 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
             fileNameEl.textContent = info.fileName;
             fileSizeEl.textContent = formatBytes(info.fileSize);
             updateSliceInfo(); // Update slice information when file info is available
+            if (!globalComputed) {
+                vscode.postMessage({
+                    type: 'computeGlobalWindow',
+                    width: parseInt(widthInput.value),
+                    height: parseInt(heightInput.value),
+                    dataType: dataTypeSelect.value,
+                    endianness: endiannessSelect.value === 'little'
+                });
+                globalComputed = true;
+            }
             hideError();
         }
         
@@ -671,15 +766,8 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
             
             // Convert binary data to grayscale pixels
             const values = parseDataType(rawData, dataType, endianness);
-            const { min, max } = findMinMax(values);
-            sliceMin = min;
-            sliceMax = max;
-            if (windowMin === null || windowMax === null) {
-                windowMin = min;
-                windowMax = max;
-            }
 
-            updateWindowControls();
+            // Use global windowMin/windowMax for mapping
             const mapped = applyWindowLevel(values, windowMin, windowMax);
 
             for (let i = 0; i < mapped.length; i++) {
