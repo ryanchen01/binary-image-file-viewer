@@ -941,12 +941,6 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
         }
 
         function resetWindow() {
-            windowMin = sliceMin;
-            windowMax = sliceMax;
-            updateWindowControls();
-            if (currentSliceData) {
-                renderSlice(currentSliceData);
-            }
             // Force recompute global window min/max when reset is clicked
             const width = parseInt(widthInput.value);
             const height = parseInt(heightInput.value);
@@ -958,6 +952,12 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
                     dataType: dataTypeSelect.value,
                     endianness: endiannessSelect.value === 'little'
                 });
+            }
+            windowMin = sliceMin;
+            windowMax = sliceMax;
+            updateWindowControls();
+            if (currentSliceData) {
+                renderSlice(currentSliceData);
             }
         }
         
