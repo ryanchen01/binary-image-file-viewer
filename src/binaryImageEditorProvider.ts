@@ -941,6 +941,18 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
             if (currentSliceData) {
                 renderSlice(currentSliceData);
             }
+            // Force recompute global window min/max when reset is clicked
+            const width = parseInt(widthInput.value);
+            const height = parseInt(heightInput.value);
+            if (width > 0 && height > 0) {
+                vscode.postMessage({
+                    type: 'computeGlobalWindow',
+                    width,
+                    height,
+                    dataType: dataTypeSelect.value,
+                    endianness: endiannessSelect.value === 'little'
+                });
+            }
         }
         
         function showError(message) {
