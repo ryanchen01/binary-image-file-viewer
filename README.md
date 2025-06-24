@@ -60,8 +60,10 @@ A Visual Studio Code extension for viewing and analyzing binary image files with
 | Type | Description | Bytes per Pixel |
 |------|-------------|-----------------|
 | `uint8` | Unsigned 8-bit integer (0-255) | 1 |
+| `int8` | Signed 8-bit integer (-128 to 127) | 1 |
 | `uint16` | Unsigned 16-bit integer (0-65535) | 2 |
 | `int16` | Signed 16-bit integer (-32768 to 32767) | 2 |
+| `uint32` | Unsigned 32-bit integer (0 to 4294967295) | 4 |
 | `int32` | Signed 32-bit integer | 4 |
 | `float32` | 32-bit floating point | 4 |
 | `float64` | 64-bit floating point | 8 |

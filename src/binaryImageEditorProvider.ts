@@ -241,8 +241,6 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
             case 'int32':
                 return 4;
             case 'float64':
-            case 'uint64':
-            case 'int64':
                 return 8;
             default:
                 return 4; // default to float32
@@ -257,7 +255,7 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
             throw new Error('Invalid width or height');
         }
         const supported = [
-            'uint8', 'int8', 'uint16', 'int16', 'uint32', 'int32', 'float32', 'float64', 'uint64', 'int64'
+            'uint8', 'int8', 'uint16', 'int16', 'uint32', 'int32', 'float32', 'float64'
         ];
         if (!supported.includes(dataType)) {
             throw new Error(`Unsupported data type: ${dataType}`);
@@ -523,8 +521,6 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
                     <option value="int16">int16</option>
                     <option value="uint32">uint32</option>
                     <option value="int32">int32</option>
-                    <option value="uint64">uint64</option>
-                    <option value="int64">int64</option>
                 </select>
             </div>
             <div class="control-group">
@@ -842,14 +838,6 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
                     bytesPerPixel = 4;
                     getValue = (offset) => view.getFloat32(offset, endianness);
                     break;
-                case 'uint64':
-                    bytesPerPixel = 8;
-                    getValue = (offset) => view.getUint64(offset, endianness);
-                    break;
-                case 'int64':
-                    bytesPerPixel = 8;
-                    getValue = (offset) => view.getInt64(offset, endianness);
-                    break;
                 case 'float64':
                     bytesPerPixel = 8;
                     getValue = (offset) => view.getFloat64(offset, endianness);
@@ -1023,8 +1011,6 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
                 case 'uint32':
                 case 'int32':
                     return 4;
-                case 'uint64':
-                case 'int64':
                 case 'float64':
                     return 8;
                 default:
