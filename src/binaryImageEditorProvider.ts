@@ -672,6 +672,7 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
         const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
         if (!gl) {
             console.error('WebGL not supported');
+            return;
         }
         let program = null;
         let positionBuffer = null;
