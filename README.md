@@ -12,11 +12,13 @@ A Visual Studio Code extension for viewing and analyzing binary image files with
 
 ### 🎛️ Interactive Controls
 - **Metadata Input**: Specify image dimensions (width × height) and data type
+- **Multi-Plane Viewing**: Toggle between axial and coronal viewing planes
 - **Slice Navigation**: Navigate through multi-slice volumes with:
   - Range slider for quick navigation
   - Mouse wheel scrolling on canvas
   - Keyboard shortcuts (←/→ arrow keys)
   - Direct slice number input
+- **Window/Level Controls**: Adjust image contrast and brightness with interactive sliders
 - **Auto-scaling**: Images automatically scale to fit the viewer window
 
 ### 📊 File Information
@@ -50,6 +52,8 @@ A Visual Studio Code extension for viewing and analyzing binary image files with
 3. **Set Endianness**: Choose little-endian or big-endian based on your data format
 4. **Load Slice**: Click "Load Slice" to render the image
 5. **Navigate**: Use the slider, mouse wheel, or arrow keys to browse through slices
+6. **Switch Views**: Click the "Plane" button to toggle between axial and coronal views
+7. **Adjust Display**: Use window/level controls to optimize image contrast and brightness
 
 ### Keyboard Shortcuts
 - `←/→` or `↑/↓`: Navigate between slices
@@ -100,10 +104,14 @@ Endianness: Little-Endian
 
 ## Roadmap
 
-### Milestone 4 (Planned)
+### Recent Updates
+- [x] Multi-plane viewing (axial and coronal)
+- [x] Window/level controls for contrast adjustment
 - [x] Enhanced error handling
+- [x] Global min/max computation for optimal windowing
 
 ### Future Enhancements
+- [ ] Sagittal plane viewing
 - [ ] MIP rendering
 - [ ] Multi-slice view modes
 - [ ] PNG export functionality
@@ -150,14 +158,13 @@ npm run package
 
 ## Release Notes
 
-### 0.0.1
+### 0.3.0
 
-Initial release with core functionality:
-- Basic binary image viewing
-- Multiple data type support
-- Slice navigation controls
-- Endianness toggle
-- Interactive UI controls
+Latest release with enhanced visualization:
+- Multi-plane viewing (axial and coronal)
+- Window/level controls for contrast adjustment
+- Global min/max computation for optimal windowing
+- Enhanced error handling and validation
 
 ---
 

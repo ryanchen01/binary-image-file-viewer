@@ -75,7 +75,8 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
                             message.height,
                             message.slice,
                             message.dataType,
-                            message.endianness
+                            message.endianness,
+                            message.plane || 'axial'
                         );
                         break;
                     case 'computeGlobalWindow':
@@ -86,7 +87,8 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
                                 message.width,
                                 message.height,
                                 message.dataType,
-                                message.endianness
+                                message.endianness,
+                                message.depth || message.width
                             );
                             webviewPanel.webview.postMessage({
                                 type: 'windowData',
@@ -155,6 +157,7 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
      * @param slice Slice index to read.
      * @param dataType Datatype of each pixel.
      * @param endianness True for little-endian, false for big-endian.
+     * @param plane View plane ('axial' or 'coronal').
      */
     private async readSlice(
         webview: vscode.Webview,
@@ -163,33 +166,73 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
         height: number,
         slice: number,
         dataType: string,
-        endianness: boolean = true
+        endianness: boolean = true,
+        plane: string = 'axial'
     ): Promise<void> {
         try {
             this.validateMetadata(width, height, dataType);
             const bytesPerPixel = this.getBytesPerPixel(dataType);
-            const sliceSize = width * height * bytesPerPixel;
-            const offset = slice * sliceSize;            // Get file data from cache (reads file only once)
             const fileData = await this.getFileData(uri);
 
             if (slice < 0) {
                 throw new Error('Slice index must be non-negative');
             }
-            if (offset + sliceSize > fileData.length) {
-                throw new Error('Slice extends beyond file size');
-            }
 
-            // Extract the slice data
-            const sliceData = fileData.slice(offset, offset + sliceSize);
+            let sliceData: Uint8Array;
+            let resultWidth: number;
+            let resultHeight: number;
+
+            if (plane === 'coronal') {
+                // For coronal view, we need depth information
+                // Calculate depth from total file size and 2D slice dimensions
+                const axialSliceSize = width * height * bytesPerPixel;
+                const depth = Math.floor(fileData.length / axialSliceSize);
+                
+                if (slice >= height) {
+                    throw new Error('Slice extends beyond image height');
+                }
+
+                // Extract coronal slice (all pixels at y=slice across all z slices)
+                const coronalSliceSize = width * depth * bytesPerPixel;
+                sliceData = new Uint8Array(coronalSliceSize);
+                
+                for (let z = 0; z < depth; z++) {
+                    const axialOffset = z * axialSliceSize + slice * width * bytesPerPixel;
+                    const coronalOffset = z * width * bytesPerPixel;
+                    
+                    if (axialOffset + width * bytesPerPixel <= fileData.length) {
+                        sliceData.set(
+                            fileData.slice(axialOffset, axialOffset + width * bytesPerPixel),
+                            coronalOffset
+                        );
+                    }
+                }
+                
+                resultWidth = width;
+                resultHeight = depth;
+            } else {
+                // Axial view (default)
+                const sliceSize = width * height * bytesPerPixel;
+                const offset = slice * sliceSize;
+                
+                if (offset + sliceSize > fileData.length) {
+                    throw new Error('Slice extends beyond file size');
+                }
+                
+                sliceData = fileData.slice(offset, offset + sliceSize);
+                resultWidth = width;
+                resultHeight = height;
+            }
 
             // Convert to the appropriate format and send to webview
             webview.postMessage({
                 type: 'sliceData',
                 data: Array.from(sliceData),
-                width,
-                height,
+                width: resultWidth,
+                height: resultHeight,
                 slice,
-                dataType
+                dataType,
+                plane
             });
         } catch (error) {
             webview.postMessage({
@@ -270,7 +313,8 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
         width: number,
         height: number,
         dataType: string,
-        endianness: boolean = true
+        endianness: boolean = true,
+        depth: number = width
     ): Promise<{ windowMin: number; windowMax: number }> {
         try {
             this.validateMetadata(width, height, dataType);
@@ -586,6 +630,10 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
                             <label>&nbsp;</label>
                             <button id="resetWindow">Reset</button>
                         </div>
+                        <div class="control-group" style="margin-top: 10px;">
+                            <label>&nbsp;</label>
+                            <button id="togglePlane">Plane: Axial</button>
+                        </div>
                     </div>
                 </div>
                 
@@ -606,6 +654,7 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
         let windowMin = null;
         let windowMax = null;
         let globalComputed = false;
+        let currentPlane = 'axial';
         
         // DOM elements
         const widthInput = document.getElementById('width');
@@ -618,6 +667,7 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
         const windowMinInput = document.getElementById('windowMin');
         const windowMaxInput = document.getElementById('windowMax');
         const resetWindowButton = document.getElementById('resetWindow');
+        const togglePlaneButton = document.getElementById('togglePlane');
         const canvas = document.getElementById('imageCanvas');
         const ctx = canvas.getContext('2d');
         const errorPanel = document.getElementById('errorPanel');
@@ -642,6 +692,7 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
         windowMinInput.addEventListener('input', updateWindow);
         windowMaxInput.addEventListener('input', updateWindow);
         resetWindowButton.addEventListener('click', resetWindow);
+        togglePlaneButton.addEventListener('click', togglePlane);
         
         // Keyboard shortcuts for slice navigation
         document.addEventListener('keydown', handleKeyboard);
@@ -670,10 +721,8 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
                 case 'windowData':
                     sliceMin = message.windowMin;
                     sliceMax = message.windowMax;
-                    if (windowMin === null || windowMax === null) {
-                        windowMin = sliceMin;
-                        windowMax = sliceMax;
-                    }
+                    windowMin = sliceMin;
+                    windowMax = sliceMax;
                     updateWindowControls();
                     if (currentSliceData) {
                         renderSlice(currentSliceData);
@@ -729,7 +778,8 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
                 height,
                 slice,
                 dataType,
-                endianness
+                endianness,
+                plane: currentPlane
             });
         }
         
@@ -979,16 +1029,25 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
             
             if (width > 0 && height > 0) {
                 const bytesPerPixel = getBytesPerPixel(dataType);
-                const sliceSize = width * height * bytesPerPixel;
-                const numSlices = Math.floor(fileInfo.fileSize / sliceSize);
-                const maxSlice = Math.max(0, numSlices - 1);
+                let numSlices, maxSlice;
+                
+                if (currentPlane === 'coronal') {
+                    // For coronal plane, slice through height dimension
+                    maxSlice = Math.max(0, height - 1);
+                    numSlices = height;
+                } else {
+                    // For axial plane, slice through depth dimension
+                    const sliceSize = width * height * bytesPerPixel;
+                    numSlices = Math.floor(fileInfo.fileSize / sliceSize);
+                    maxSlice = Math.max(0, numSlices - 1);
+                }
                 
                 numSlicesEl.textContent = numSlices.toString();
                 sliceInput.max = maxSlice.toString();
                 sliceSlider.max = maxSlice.toString();
                 
                 // Reset slice to 0 if current slice exceeds available slices
-                if (parseInt(sliceInput.value) >= numSlices) {
+                if (parseInt(sliceInput.value) > maxSlice) {
                     sliceInput.value = '0';
                     sliceSlider.value = '0';
                 }
@@ -1015,6 +1074,26 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
                     return 8;
                 default:
                     return 4; // default to float32
+            }
+        }
+        
+        function togglePlane() {
+            // Toggle between axial and coronal planes
+            currentPlane = currentPlane === 'axial' ? 'coronal' : 'axial';
+            togglePlaneButton.textContent = 'Plane: ' + currentPlane.charAt(0).toUpperCase() + currentPlane.slice(1);
+            
+            // Update slice information for the new plane
+            updateSliceInfo();
+            
+            // Reset slice to 0 when changing planes
+            sliceInput.value = '0';
+            sliceSlider.value = '0';
+            
+            // Load the first slice in the new plane if we have valid dimensions
+            const width = parseInt(widthInput.value);
+            const height = parseInt(heightInput.value);
+            if (width > 0 && height > 0) {
+                loadSlice();
             }
         }
         
