@@ -909,6 +909,14 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
             const shader = gl.createShader(type);
             gl.shaderSource(shader, source);
             gl.compileShader(shader);
+            
+            // Check shader compilation status
+            if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                console.error('Shader compilation failed: ', gl.getShaderInfoLog(shader));
+                gl.deleteShader(shader);
+                return null; // Return null to indicate failure
+            }
+            
             return shader;
         }
 
