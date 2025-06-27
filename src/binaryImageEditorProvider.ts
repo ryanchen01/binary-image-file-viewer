@@ -669,7 +669,15 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
         const resetWindowButton = document.getElementById('resetWindow');
         const togglePlaneButton = document.getElementById('togglePlane');
         const canvas = document.getElementById('imageCanvas');
-        const ctx = canvas.getContext('2d');
+        const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
+        if (!gl) {
+            console.error('WebGL not supported');
+        }
+        let program = null;
+        let positionBuffer = null;
+        let texture = null;
+        let uWindowMin = null;
+        let uWindowMax = null;
         const errorPanel = document.getElementById('errorPanel');
         const errorMessage = document.getElementById('errorMessage');
         
@@ -699,13 +707,15 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
         
         // Mouse wheel navigation on canvas
         canvas.addEventListener('wheel', handleMouseWheel);
-        
+
         // Handle window resize to rescale canvas
         window.addEventListener('resize', () => {
             if (currentSliceData) {
                 setTimeout(scaleCanvasToFit, 100); // Small delay to ensure layout is complete
             }
         });
+
+        initGL();
         
         // Message handling
         window.addEventListener('message', event => {
@@ -841,20 +851,83 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
             sliceSlider.value = newSlice;
             loadSlice();
         }
-        
-        // Optimized renderSlice: single-pass, no intermediate arrays
+
+        function initGL() {
+            const vsSource = \`#version 300 es
+                in vec2 a_position;
+                out vec2 v_texCoord;
+                void main() {
+                    v_texCoord = a_position * 0.5 + 0.5;
+                    gl_Position = vec4(a_position, 0.0, 1.0);
+                }
+            \`;
+
+            const fsSource = \`#version 300 es
+                precision highp float;
+                uniform sampler2D u_texture;
+                uniform float u_windowMin;
+                uniform float u_windowMax;
+                in vec2 v_texCoord;
+                out vec4 outColor;
+                void main() {
+                    float value = texture(u_texture, v_texCoord).r;
+                    float norm = (value - u_windowMin) / (u_windowMax - u_windowMin);
+                    norm = clamp(norm, 0.0, 1.0);
+                    outColor = vec4(vec3(norm), 1.0);
+                }
+            \`;
+
+            const vertexShader = createShader(gl.VERTEX_SHADER, vsSource);
+            const fragmentShader = createShader(gl.FRAGMENT_SHADER, fsSource);
+            program = createProgram(vertexShader, fragmentShader);
+
+            const posLocation = gl.getAttribLocation(program, 'a_position');
+            positionBuffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+                -1, -1,
+                 1, -1,
+                -1,  1,
+                 1,  1,
+            ]), gl.STATIC_DRAW);
+            gl.enableVertexAttribArray(posLocation);
+            gl.vertexAttribPointer(posLocation, 2, gl.FLOAT, false, 0, 0);
+
+            texture = gl.createTexture();
+            gl.bindTexture(gl.TEXTURE_2D, texture);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+
+            uWindowMin = gl.getUniformLocation(program, 'u_windowMin');
+            uWindowMax = gl.getUniformLocation(program, 'u_windowMax');
+        }
+
+        function createShader(type, source) {
+            const shader = gl.createShader(type);
+            gl.shaderSource(shader, source);
+            gl.compileShader(shader);
+            return shader;
+        }
+
+function createProgram(vs, fs) {
+            const prog = gl.createProgram();
+            gl.attachShader(prog, vs);
+            gl.attachShader(prog, fs);
+            gl.linkProgram(prog);
+            return prog;
+        }
+
+        // Render slice using WebGL
         function renderSlice(data) {
             const { width, height, dataType } = data;
             const rawData = new Uint8Array(data.data);
             const endianness = endiannessSelect.value === 'little';
 
-            // Set canvas actual size (for drawing)
             canvas.width = width;
             canvas.height = height;
 
-            // Create image data
-            const imageData = ctx.createImageData(width, height);
-            const pixels = imageData.data;
             const view = new DataView(rawData.buffer, rawData.byteOffset, rawData.byteLength);
 
             let bytesPerPixel = 1;
@@ -896,27 +969,24 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
                     throw new Error(\`Unsupported data type: \${dataType}\`);
             }
 
-            const range = windowMax - windowMin || 1;
-            const numPixels = width * height;
-            for (let i = 0; i < numPixels; i++) {
-                const value = getValue(i * bytesPerPixel);
-                let normalized = (value - windowMin) / range;
-                if (normalized < 0) normalized = 0;
-                else if (normalized > 1) normalized = 1;
-                const grayscale = Math.round(normalized * 255);
-
-                const pixelIndex = i * 4;
-                pixels[pixelIndex] = grayscale;     // R
-                pixels[pixelIndex + 1] = grayscale; // G
-                pixels[pixelIndex + 2] = grayscale; // B
-                pixels[pixelIndex + 3] = 255;       // A
+            const values = new Float32Array(width * height);
+            for (let i = 0; i < values.length; i++) {
+                values[i] = getValue(i * bytesPerPixel);
             }
 
-            ctx.putImageData(imageData, 0, 0);
+            gl.bindTexture(gl.TEXTURE_2D, texture);
+            gl.texImage2D(gl.TEXTURE_2D, 0, gl.R32F, width, height, 0, gl.RED, gl.FLOAT, values);
 
-            // Scale canvas to fit container after rendering
+            gl.useProgram(program);
+            gl.uniform1f(uWindowMin, windowMin);
+            gl.uniform1f(uWindowMax, windowMax);
+
+            gl.viewport(0, 0, width, height);
+            gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
             scaleCanvasToFit();
         }
+        
         
         function scaleCanvasToFit() {
             const container = canvas.parentElement;
