@@ -73,7 +73,7 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
                             message.height,
                             message.slice,
                             message.dataType,
-                            message.endianness,
+                            /* endianness */ undefined,
                             message.plane || 'axial',
                             message.forceReload || false
                         );                        break;
@@ -197,18 +197,13 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
                 const coronalSliceSize = width * depth * bytesPerPixel;
                 sliceData = new Uint8Array(coronalSliceSize);
                 
-                for (let z = 0; z < depth; z++) {
-                    const axialOffset = z * axialSliceSize + slice * width * bytesPerPixel;
-                    const coronalOffset = z * width * bytesPerPixel;
-                    
-                    if (axialOffset + width * bytesPerPixel <= fileData.length) {
-                        sliceData.set(
-                            fileData.slice(axialOffset, axialOffset + width * bytesPerPixel),
-                            coronalOffset
-                        );
-                    }
-                }
-                
+                const rowBytes = width * bytesPerPixel;
+                const maxZ = Math.min(depth, Math.floor(fileData.length / axialSliceSize));
+                for (let z = 0; z < maxZ; z++) {
+                    const axialOffset = z * axialSliceSize + slice * rowBytes;
+                    const coronalOffset = z * rowBytes;
+                    sliceData.set(fileData.subarray(axialOffset, axialOffset + rowBytes), coronalOffset);
+                }                
                 resultWidth = width;
                 resultHeight = depth;
             } else {
