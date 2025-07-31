@@ -21,51 +21,99 @@ export class WebviewUIManager {
             background-color: var(--vscode-editor-background);
             color: var(--vscode-editor-foreground);
             margin: 0;
-            padding: 20px;
+            padding: 24px;
+            overflow: hidden;
         }
         
         .container {
             display: flex;
             flex-direction: column;
-            height: 100vh;
+            height: calc(100vh - 48px);
+            max-width: 1400px;
+            margin: 0 auto;
         }
         
         .controls {
             display: flex;
-            gap: 10px;
-            align-items: center;
-            padding: 10px 0;
+            flex-wrap: wrap;
+            gap: 16px;
+            align-items: flex-start;
+            padding: 16px 0;
             border-bottom: 1px solid var(--vscode-panel-border);
-            margin-bottom: 20px;
+            margin-bottom: 24px;
         }
         
         .control-group {
             display: flex;
             flex-direction: column;
-            gap: 5px;
+            gap: 6px;
+            min-width: 0;
         }
         
         .control-group label {
-            font-size: 12px;
+            font-size: 11px;
             color: var(--vscode-descriptionForeground);
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            white-space: nowrap;
         }
         
-        .control-group input, .control-group select {
-            padding: 4px 8px;
+        .control-group input[type="number"] {
+            width: 80px;
+            padding: 6px 8px;
             background-color: var(--vscode-input-background);
             color: var(--vscode-input-foreground);
             border: 1px solid var(--vscode-input-border);
-            border-radius: 2px;
+            border-radius: 3px;
+            font-size: 13px;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+            box-sizing: border-box;
+        }
+        
+        .control-group input[type="range"] {
+            width: 100%;
+            padding: 0;
+            background-color: transparent;
+            border: none;
+            border-radius: 0;
+            cursor: pointer;
+        }
+        
+        .control-group select {
+            width: 120px;
+            padding: 6px 8px;
+            background-color: var(--vscode-input-background);
+            color: var(--vscode-input-foreground);
+            border: 1px solid var(--vscode-input-border);
+            border-radius: 3px;
+            font-size: 13px;
+            transition: border-color 0.2s ease, box-shadow 0.2s ease;
+            box-sizing: border-box;
+            cursor: pointer;
+        }
+        
+        .control-group input:focus,
+        .control-group select:focus {
+            outline: none;
+            border-color: var(--vscode-focusBorder);
+            box-shadow: 0 0 0 1px var(--vscode-focusBorder);
+        }
+        
+        .control-group input:hover,
+        .control-group select:hover {
+            border-color: var(--vscode-input-border-hover);
         }
         
         .content {
             display: flex;
             flex: 1;
-            gap: 20px;
+            gap: 24px;
+            min-height: 0;
         }
         
         .canvas-container {
-            flex: 2;
+            flex: 1;
             display: flex;
             justify-content: center;
             align-items: center;
@@ -73,6 +121,8 @@ export class WebviewUIManager {
             background-color: var(--vscode-editor-background);
             min-height: 400px;
             overflow: hidden;
+            border-radius: 6px;
+            position: relative;
         }
         
         #imageCanvas {
@@ -82,62 +132,113 @@ export class WebviewUIManager {
             height: auto;
             object-fit: contain;
             image-rendering: pixelated;
+            transition: transform 0.3s ease;
         }
         
         .sidebar {
-            flex: 1;
+            width: 320px;
             display: flex;
             flex-direction: column;
             gap: 20px;
+            flex-shrink: 0;
         }
         
         .info-panel {
-            padding: 15px;
+            padding: 16px;
             background-color: var(--vscode-editorWidget-background);
             border: 1px solid var(--vscode-panel-border);
-            border-radius: 4px;
+            border-radius: 6px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
         }
         
         .info-panel h3 {
-            margin: 0 0 10px 0;
-            font-size: 14px;
+            margin: 0 0 12px 0;
+            font-size: 13px;
             color: var(--vscode-foreground);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
         
         .info-item {
             display: flex;
             justify-content: space-between;
-            margin-bottom: 5px;
+            align-items: center;
+            margin-bottom: 8px;
             font-size: 12px;
+            padding: 4px 0;
+        }
+        
+        .info-item span:first-child {
+            color: var(--vscode-descriptionForeground);
+            font-weight: 500;
+        }
+        
+        .info-item span:last-child {
+            color: var(--vscode-foreground);
+            font-family: var(--vscode-editor-font-family);
+            font-weight: 600;
         }
         
         .error {
             color: var(--vscode-errorForeground);
             background-color: var(--vscode-inputValidation-errorBackground);
             border: 1px solid var(--vscode-inputValidation-errorBorder);
-            padding: 10px;
-            border-radius: 4px;
+            padding: 12px 16px;
+            border-radius: 6px;
             margin: 10px 0;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            font-size: 12px;
+            line-height: 1.4;
+        }
+        
+        .window-controls {
+            margin-top: 20px;
+            padding-top: 16px;
+            border-top: 1px solid var(--vscode-panel-border);
+        }
+        
+        .window-controls .control-group {
+            margin-bottom: 12px;
+        }
+        
+        .window-controls .control-group:last-child {
+            margin-bottom: 0;
         }
         
         button {
-            padding: 6px 12px;
+            padding: 8px 16px;
             background-color: var(--vscode-button-background);
             color: var(--vscode-button-foreground);
             border: none;
-            border-radius: 2px;
+            border-radius: 4px;
             cursor: pointer;
             font-size: 12px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
         
         button:hover {
             background-color: var(--vscode-button-hoverBackground);
+            transform: translateY(-1px);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+        }
+        
+        button:active {
+            transform: translateY(0);
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
         }
         
         button:disabled {
             background-color: var(--vscode-button-secondaryBackground);
             color: var(--vscode-button-secondaryForeground);
             cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+            opacity: 0.7;
         }
     </style>
 </head>
@@ -146,11 +247,11 @@ export class WebviewUIManager {
         <div class="controls">
             <div class="control-group">
                 <label for="width">Width</label>
-                <input type="number" id="width" placeholder="Enter width" min="1">
+                <input type="number" id="width" placeholder="Width" min="1">
             </div>
             <div class="control-group">
                 <label for="height">Height</label>
-                <input type="number" id="height" placeholder="Enter height" min="1">
+                <input type="number" id="height" placeholder="Height" min="1">
             </div>
             <div class="control-group">
                 <label for="dataType">Data Type</label>
@@ -178,7 +279,7 @@ export class WebviewUIManager {
             </div>
             <div class="control-group">
                 <label for="sliceSlider">Navigate</label>
-                <input type="range" id="sliceSlider" value="0" min="0" max="0" style="width: 100px;">
+                <input type="range" id="sliceSlider" value="0" min="0" max="0" style="width: 150px;height: 20px;">
             </div>
             <div class="control-group">
                 <label for="loadSlice">Load</label>
@@ -214,21 +315,21 @@ export class WebviewUIManager {
                         <span>Dimensions:</span>
                         <span id="dimensions">-</span>
                     </div>
-                    <div class="window-controls" style="margin-top:20px; padding-top:10px; border-top:1px solid var(--vscode-panel-border);">
-                        <h3 style="margin-bottom:8px;">Window/Level Controls</h3>
+                    <div class="window-controls">
+                        <h3>Window/Level Controls</h3>
                         <div class="control-group">
                             <label for="windowMin">Window Min</label>
-                            <input type="range" id="windowMin" value="0" min="0" max="255" style="width: 100%;">
+                            <input type="range" id="windowMin" value="0" min="0" max="255">
                         </div>
                         <div class="control-group">
                             <label for="windowMax">Window Max</label>
-                            <input type="range" id="windowMax" value="255" min="0" max="255" style="width: 100%;">
+                            <input type="range" id="windowMax" value="255" min="0" max="255">
                         </div>
                         <div class="control-group">
                             <label>&nbsp;</label>
                             <button id="resetWindow">Reset</button>
                         </div>
-                        <div class="control-group" style="margin-top: 10px;">
+                        <div class="control-group">
                             <label>&nbsp;</label>
                             <button id="togglePlane">Plane: Axial</button>
                         </div>
