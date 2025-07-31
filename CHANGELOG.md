@@ -4,8 +4,17 @@ All notable changes to the "binary-image-file-viewer" extension are documented h
 
 This project adheres to Keep a Changelog and Semantic Versioning.
 
+## [0.5.0] - 2025-07-31
+### Improved
+- Enhanced UI layout stability with fixed-width input controls to prevent layout shifting
+- Added consistent spacing and sizing for all control elements
+- Improved responsive layout with better flexbox constraints
+- Enhanced visual
+- Centered range sliders alignment with other control elements
+- Extended windowing sliders to full width to match button dimensions
+- Added focus states, shadows, and improved typography throughout the interface
+
 ## [0.4.0]
-- Planned: sagittal plane, MIP rendering, multi-slice views, PNG export, large dataset perf
 - Fixed line ending inconsistencies across source files
 - Removed unused imports and improved code formatting
 - Standardized documentation structure and formatting
