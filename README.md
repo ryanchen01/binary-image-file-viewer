@@ -35,4 +35,4 @@ A Visual Studio Code extension for viewing and analyzing binary image files with
 MIT
 
 ## Links
-Marketplace (coming soon) • Source: https://github.com/ryanchen01/binary-image-file-viewer
+Marketplace https://marketplace.visualstudio.com/items?itemName=ryanchen01.binary-image-file-viewer • Source: https://github.com/ryanchen01/binary-image-file-viewer
