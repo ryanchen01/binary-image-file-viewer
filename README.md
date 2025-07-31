@@ -1,173 +1,38 @@
 # Binary Image File Viewer
 
-A Visual Studio Code extension for viewing and analyzing binary image files with advanced visualization capabilities. Perfect for researchers, engineers, and data scientists working with raw binary image data from scientific instruments, medical devices, or custom imaging systems.
+A Visual Studio Code extension for viewing and analyzing binary image files with interactive grayscale visualization, slice navigation, and window/level controls.
 
 ## Features
-
-### 🖼️ Binary Image Visualization
-- **Multi-format Support**: View binary files as grayscale images with configurable data types
-- **Real-time Rendering**: Interactive canvas-based visualization with automatic scaling
-- **Multiple Data Types**: Support for uint8, uint16, int16, int32, float32, and float64 formats
-- **Endianness Control**: Toggle between little-endian and big-endian byte ordering
-
-### 🎛️ Interactive Controls
-- **Metadata Input**: Specify image dimensions (width × height) and data type
-- **Multi-Plane Viewing**: Toggle between axial and coronal viewing planes
-- **Slice Navigation**: Navigate through multi-slice volumes with:
-  - Range slider for quick navigation
-  - Mouse wheel scrolling on canvas
-  - Keyboard shortcuts (←/→ arrow keys)
-  - Direct slice number input
-- **Window/Level Controls**: Adjust image contrast and brightness with interactive sliders
-- **Auto-scaling**: Images automatically scale to fit the viewer window
-
-### 📊 File Information
-- **File Statistics**: View file size, dimensions, and calculated slice count
-- **Current Slice Info**: Track which slice you're currently viewing
-- **Smart Validation**: Automatic bounds checking and error handling
+- View raw binary as images with configurable data types (uint8/int8/uint16/int16/uint32/int32/float32/float64)
+- Axial and coronal planes with instant toggling
+- Window/level controls with live preview and reset
+- Real-time rendering with auto-scaling to fit the viewport
+- Slice navigation via slider, mouse wheel, and arrow keys
+- File info panel: name, size, dimensions, estimated slice count
+- Robust validation and user-facing error messages
 
 ## Supported File Types
+- .raw, .bin (other binary types may work if dimensions/data type are known)
 
-- `.raw` files (raw binary image data)
-- `.bin` files (binary data files)
-- Any binary file containing image data (configurable through VS Code settings)
-
-## Installation
-
-1. Install from the VS Code Marketplace (coming soon)
-2. Or install from VSIX:
-   - Download the `.vsix` file
-   - Run `code --install-extension binary-image-file-viewer.vsix`
+## Install
+- npm ci, then npm run compile to build
+- From VSIX: code --install-extension binary-image-file-viewer.vsix
 
 ## Usage
-
-### Opening Binary Files
-1. Open a `.raw` or `.bin` file in VS Code
-2. The Binary Image Viewer will automatically activate
-3. Configure the image parameters in the control panel
-
-### Basic Workflow
-1. **Set Dimensions**: Enter the width and height of your image data
-2. **Choose Data Type**: Select the appropriate data type (uint8, float32, etc.)
-3. **Set Endianness**: Choose little-endian or big-endian based on your data format
-4. **Load Slice**: Click "Load Slice" to render the image
-5. **Navigate**: Use the slider, mouse wheel, or arrow keys to browse through slices
-6. **Switch Views**: Click the "Plane" button to toggle between axial and coronal views
-7. **Adjust Display**: Use window/level controls to optimize image contrast and brightness
-
-### Keyboard Shortcuts
-- `←/→` or `↑/↓`: Navigate between slices
-- `Mouse Wheel`: Scroll through slices when hovering over the image
-
-## Data Types Supported
-
-| Type | Description | Bytes per Pixel |
-|------|-------------|-----------------|
-| `uint8` | Unsigned 8-bit integer (0-255) | 1 |
-| `int8` | Signed 8-bit integer (-128 to 127) | 1 |
-| `uint16` | Unsigned 16-bit integer (0-65535) | 2 |
-| `int16` | Signed 16-bit integer (-32768 to 32767) | 2 |
-| `uint32` | Unsigned 32-bit integer (0 to 4294967295) | 4 |
-| `int32` | Signed 32-bit integer | 4 |
-| `float32` | 32-bit floating point | 4 |
-| `float64` | 64-bit floating point | 8 |
-
-## Configuration
-
-Currently, the extension works with files having `.raw` and `.bin` extensions. Future versions will support custom file extension configuration through VS Code settings.
-
-## Examples
-
-### Medical Imaging Data
-```
-Width: 512
-Height: 512
-Data Type: uint16
-Endianness: Little-Endian
-```
-
-### Scientific Instrument Data
-```
-Width: 1024
-Height: 768
-Data Type: float32
-Endianness: Big-Endian
-```
-
-### Raw Camera Data
-```
-Width: 2048
-Height: 1536
-Data Type: uint8
-Endianness: Little-Endian
-```
-
-## Roadmap
-
-### Recent Updates
-- [x] Multi-plane viewing (axial and coronal)
-- [x] Window/level controls for contrast adjustment
-- [x] Enhanced error handling
-- [x] Global min/max computation for optimal windowing
-
-### Future Enhancements
-- [ ] Sagittal plane viewing
-- [ ] MIP rendering
-- [ ] Multi-slice view modes
-- [ ] PNG export functionality
-- [ ] Performance optimizations for large datasets
-
-## Requirements
-
-- Visual Studio Code 1.101.0 or higher
-- No additional dependencies required
-
-## Known Issues
-
-- Large files (>100MB) may experience slower loading times
-- Maximum recommended image size: 4096×4096 pixels
-- Memory usage scales with image dimensions and bit depth
-
-## Contributing
-
-This extension is under active development. Contributions, bug reports, and feature requests are welcome!
+1) Open a .raw or .bin file
+2) Enter width, height, data type, endianness
+3) Click "Load Slice" and navigate slices; toggle plane as needed
 
 ## Development
+- Build: npm run compile | Watch: npm run watch | Package: npm run package
+- Lint: npm run lint | Test: npm test (pretest compiles and lints)
+- Single test: after npm run pretest run: npx mocha out/test/**/*.test.js --grep "pattern"
 
-### Building from Source
-```bash
-git clone <repository-url>
-cd binary-image-file-viewer
-npm install
-npm run compile
-```
-
-### Testing
-```bash
-npm run test
-```
-
-### Packaging
-```bash
-npm run package
-```
+## Roadmap
+- Planned: sagittal plane, MIP rendering, multi-slice views, PNG export, large dataset perf
 
 ## License
+MIT
 
-[Add your license information here]
-
-## Release Notes
-
-### 0.3.0
-
-Latest release with enhanced visualization:
-- Multi-plane viewing (axial and coronal)
-- Window/level controls for contrast adjustment
-- Global min/max computation for optimal windowing
-- Enhanced error handling and validation
-
----
-
-**Enjoy visualizing your binary image data!** 🚀
-
-For questions, issues, or feature requests, please visit our [GitHub repository](https://github.com/your-username/binary-image-file-viewer).
+## Links
+Marketplace (coming soon) • Source: https://github.com/ryanchen01/binary-image-file-viewer

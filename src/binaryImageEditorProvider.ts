@@ -1,7 +1,5 @@
 import * as vscode from 'vscode';
-import * as fs from 'fs';
 import * as path from 'path';
-
 /**
  * Custom editor provider responsible for rendering binary image files in a
  * readonly webview. The provider reads slices of the file on demand and sends
@@ -76,9 +74,9 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
                             message.slice,
                             message.dataType,
                             message.endianness,
-                            message.plane || 'axial'
-                        );
-                        break;
+                            message.plane || 'axial',
+                            message.forceReload || false
+                        );                        break;
                     case 'computeGlobalWindow':
                         // Compute global min/max for the entire image
                         try {
@@ -167,13 +165,16 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
         slice: number,
         dataType: string,
         endianness: boolean = true,
-        plane: string = 'axial'
+        plane: string = 'axial',
+        forceReload: boolean = false
     ): Promise<void> {
         try {
             this.validateMetadata(width, height, dataType);
             const bytesPerPixel = this.getBytesPerPixel(dataType);
+            if (forceReload) {
+                this.fileCache.delete(uri.toString());
+            }
             const fileData = await this.getFileData(uri);
-
             if (slice < 0) {
                 throw new Error('Slice index must be non-negative');
             }
@@ -697,9 +698,8 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
         // Keyboard shortcuts for slice navigation
         document.addEventListener('keydown', handleKeyboard);
         
-        // Mouse wheel navigation on canvas
-        canvas.addEventListener('wheel', handleMouseWheel);
-        
+            // Mouse wheel navigation on canvas
+            canvas.addEventListener('wheel', handleMouseWheel, { passive: false });        
         // Handle window resize to rescale canvas
         window.addEventListener('resize', () => {
             if (currentSliceData) {
@@ -779,10 +779,10 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
                 slice,
                 dataType,
                 endianness,
-                plane: currentPlane
+                plane: currentPlane,
+                forceReload: true  // Force reload from disk when Load Slice is clicked
             });
-        }
-        
+        }        
         function syncSliceControls(event) {
             const sourceElement = event.target;
             const newValue = parseInt(sourceElement.value);
@@ -793,12 +793,12 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
                 sliceInput.value = newValue;
             }
             
-            // Auto-load slice when using slider or when pressing Enter in input
-            if (sourceElement === sliceSlider || (sourceElement === sliceInput && event.type === 'keydown' && event.key === 'Enter')) {
+            // Auto-load slice when using slider or when Enter is pressed in slice input
+            if (sourceElement === sliceSlider || 
+                (sourceElement === sliceInput && event.type === 'input')) {
                 loadSlice();
             }
-        }
-        
+        }        
         function handleKeyboard(event) {
             // Only handle navigation if canvas or document is focused
             if (document.activeElement && document.activeElement.tagName === 'INPUT' && document.activeElement !== sliceInput) {
@@ -812,15 +812,17 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
                 event.preventDefault();
                 if (currentSlice > 0) {
                     navigateToSlice(currentSlice - 1);
+                    loadSlice();
                 }
             } else if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
                 event.preventDefault();
                 if (currentSlice < maxSlice) {
                     navigateToSlice(currentSlice + 1);
+                    loadSlice();
                 }
-            }
-        }
-        
+            } else if (event.key === 'Enter' && document.activeElement === sliceInput) {
+                loadSlice();
+            }        }        
         function handleMouseWheel(event) {
             event.preventDefault();
             
@@ -828,20 +830,16 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
             const maxSlice = parseInt(sliceInput.max);
             
             if (event.deltaY < 0 && currentSlice > 0) {
-                // Scroll up - previous slice
                 navigateToSlice(currentSlice - 1);
+                loadSlice();
             } else if (event.deltaY > 0 && currentSlice < maxSlice) {
-                // Scroll down - next slice
                 navigateToSlice(currentSlice + 1);
-            }
-        }
-        
+                loadSlice();
+            }        }        
         function navigateToSlice(newSlice) {
             sliceInput.value = newSlice;
             sliceSlider.value = newSlice;
-            loadSlice();
-        }
-        
+        }        
         // Optimized renderSlice: single-pass, no intermediate arrays
         function renderSlice(data) {
             const { width, height, dataType } = data;
