@@ -279,11 +279,10 @@ export class WebviewUIManager {
             </div>
             <div class="control-group">
                 <label for="sliceSlider">Navigate</label>
-                <input type="range" id="sliceSlider" value="0" min="0" max="0" style="width: 150px;height: 20px;">
+                <input type="range" id="sliceSlider" value="0" min="0" max="0" style="width: 150px;margin-top: 6px;">
             </div>
             <div class="control-group">
-                <label for="loadSlice">Load</label>
-                <button id="loadSlice">Load Slice</button>
+                <button id="loadSlice" style="margin-top: 20px;">Load Slice</button>
             </div>
         </div>
         
