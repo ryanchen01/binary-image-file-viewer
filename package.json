@@ -2,6 +2,7 @@
   "name": "binary-image-file-viewer",
   "displayName": "Binary Image File Viewer",
   "description": "An extension for viewing binary files as an image.",
+  "icon": "images/icon.png",
   "repository": {
     "type": "git",
     "url": "https://github.com/ryanchen01/binary-image-file-viewer"
