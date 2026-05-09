@@ -66,15 +66,21 @@ suite('BinaryImageEditorProvider', () => {
         assert.ok(!html.includes('computeGlobalWindow'));
     });
 
-    test('generated HTML resets window range for every loaded slice', () => {
+    test('generated HTML preserves window values across slice changes and only clips slider positions to the new slice range', () => {
         const asAny = provider as any;
         const html: string = asAny.getHtmlForWebview({} as any);
         const updateIndex = html.indexOf('updateSliceRange(currentSliceData);');
+        const renderIndex = html.indexOf('renderSlice(currentSliceData);', updateIndex);
         const resetIndex = html.indexOf('resetWindowToSliceRange();', updateIndex);
-        const renderIndex = html.indexOf('renderSlice(currentSliceData);', resetIndex);
         assert.ok(updateIndex >= 0);
-        assert.ok(resetIndex > updateIndex);
-        assert.ok(renderIndex > resetIndex);
+        assert.ok(renderIndex > updateIndex);
+        assert.ok(resetIndex === -1 || resetIndex > renderIndex);
+        assert.ok(html.includes('clipWindowValueToSliceRange(windowMin)'));
+        assert.ok(!html.includes('syncWindowToSliceRange()'));
+        assert.ok(!html.includes('windowMin = clippedWindowMin;'));
+        assert.ok(!html.includes('windowMax = clippedWindowMax;'));
+        assert.ok(html.includes('windowMinInput.min = controlMin;'));
+        assert.ok(html.includes('windowMaxInput.max = controlMax;'));
     });
 
     test('openCustomDocument returns a document with the same URI', async () => {

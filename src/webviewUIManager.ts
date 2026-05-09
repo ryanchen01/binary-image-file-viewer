@@ -482,7 +482,6 @@ export class WebviewUIManager {
                 updateFileSize(data.fileSize);
                 currentSliceData = { ...data, rawData };
                 updateSliceRange(currentSliceData);
-                resetWindowToSliceRange();
                 renderSlice(currentSliceData);
                 currentSliceEl.textContent = data.slice;
                 dimensionsEl.textContent = \`\${data.width} × \${data.height}\`;
@@ -774,6 +773,14 @@ export class WebviewUIManager {
             windowMax = sliceMax;
             updateWindowControls();
         }
+
+        function clipWindowValueToSliceRange(value) {
+            if (value === null) {
+                return null;
+            }
+
+            return Math.min(sliceMax, Math.max(sliceMin, value));
+        }
         
         function renderSlice(data) {
             const { width, height, dataType } = data;
@@ -862,27 +869,23 @@ export class WebviewUIManager {
         }
         
         function updateWindowControls() {
-            let minVal = sliceMin;
-            let maxVal = sliceMax;
-            if (windowMin !== null) {
-                minVal = Math.min(minVal, windowMin);
-                maxVal = Math.max(maxVal, windowMin);
+            const clippedWindowMin = clipWindowValueToSliceRange(windowMin);
+            const clippedWindowMax = clipWindowValueToSliceRange(windowMax);
+            let controlMin = sliceMin;
+            let controlMax = sliceMax;
+
+            if (controlMin === controlMax) {
+                controlMin = controlMin - 0.5;
+                controlMax = controlMax + 0.5;
             }
-            if (windowMax !== null) {
-                minVal = Math.min(minVal, windowMax);
-                maxVal = Math.max(maxVal, windowMax);
-            }
-            if (minVal === maxVal) {
-                minVal = minVal - 0.5;
-                maxVal = maxVal + 0.5;
-            }
-            windowMinInput.min = minVal;
-            windowMinInput.max = maxVal;
-            windowMaxInput.min = minVal;
-            windowMaxInput.max = maxVal;
-            windowMinInput.value = windowMin !== null ? windowMin : minVal;
-            windowMaxInput.value = windowMax !== null ? windowMax : maxVal;
-            const dataRange = maxVal - minVal;
+
+            windowMinInput.min = controlMin;
+            windowMinInput.max = controlMax;
+            windowMaxInput.min = controlMin;
+            windowMaxInput.max = controlMax;
+            windowMinInput.value = clippedWindowMin !== null ? clippedWindowMin : sliceMin;
+            windowMaxInput.value = clippedWindowMax !== null ? clippedWindowMax : sliceMax;
+            const dataRange = controlMax - controlMin;
             const step = dataRange > 0 ? dataRange / 255 : 1;
             windowMinInput.step = step;
             windowMaxInput.step = step;

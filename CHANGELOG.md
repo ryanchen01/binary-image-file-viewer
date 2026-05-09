@@ -4,6 +4,10 @@ All notable changes to the "binary-image-file-viewer" extension are documented h
 
 This project adheres to Keep a Changelog and Semantic Versioning.
 
+## [6.0.1] - 2026-05-09
+### Changed
+- Preserved the active window/level values when switching slices while keeping the window sliders bounded to the current slice's min/max range.
+
 ## [0.6.0] - 2026-05-09
 ### Added
 - Added a manual reload button to refresh the current slice when the backing image file changes.
