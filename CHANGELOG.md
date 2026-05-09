@@ -4,6 +4,23 @@ All notable changes to the "binary-image-file-viewer" extension are documented h
 
 This project adheres to Keep a Changelog and Semantic Versioning.
 
+## [0.6.0] - 2026-05-09
+### Added
+- Added a manual reload button to refresh the current slice when the backing image file changes.
+
+### Changed
+- Optimized remote slice navigation by reading axial slices by byte range instead of reloading the full file.
+- Coalesced rapid slice navigation so only the latest pending slice request is loaded while another request is in flight.
+- Encoded slice data as base64 to reduce webview message overhead compared with JSON number arrays.
+- Reset window/level min and max from each loaded slice instead of using a global image range.
+- Updated file size and slice count after slice reloads so changes on disk are reflected in the UI.
+- Improved webview resize handling so the canvas and sidebar adapt to VS Code editor area changes.
+
+## [0.5.1] - 2025-08-20
+### Changed
+- Restored compatibility metadata for VS Code 1.45.0.
+- Updated `@types/vscode` development dependency metadata to match the supported VS Code engine.
+
 ## [0.5.0] - 2025-07-31
 ### Improved
 - Enhanced UI layout stability with fixed-width input controls to prevent layout shifting
