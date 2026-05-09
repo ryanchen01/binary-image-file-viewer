@@ -125,6 +125,7 @@ export class WebviewUIManager {
             gap: 24px;
             min-height: 0;
             overflow: hidden;
+            align-items: stretch;
         }
         
         .canvas-container {
@@ -138,6 +139,7 @@ export class WebviewUIManager {
             overflow: hidden;
             border-radius: 6px;
             position: relative;
+            min-width: 0;
         }
         
         #imageCanvas {
@@ -150,7 +152,7 @@ export class WebviewUIManager {
             transition: transform 0.3s ease;
         }
         
-        .sidebar {
+        .side-panel {
             width: 320px;
             display: flex;
             flex-direction: column;
@@ -158,6 +160,10 @@ export class WebviewUIManager {
             flex-shrink: 0;
             min-height: 0;
             overflow-y: auto;
+        }
+
+        .side-panel--left {
+            width: 260px;
         }
         
         .info-panel {
@@ -172,6 +178,21 @@ export class WebviewUIManager {
             margin: 0 0 12px 0;
             font-size: 13px;
             color: var(--vscode-foreground);
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .info-subsection {
+            margin-top: 16px;
+            padding-top: 12px;
+            border-top: 1px solid var(--vscode-panel-border);
+        }
+
+        .info-subsection h4 {
+            margin: 0 0 10px 0;
+            font-size: 11px;
+            color: var(--vscode-descriptionForeground);
             font-weight: 600;
             text-transform: uppercase;
             letter-spacing: 0.5px;
@@ -210,17 +231,33 @@ export class WebviewUIManager {
         }
         
         .window-controls {
-            margin-top: 20px;
-            padding-top: 16px;
-            border-top: 1px solid var(--vscode-panel-border);
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
         }
         
         .window-controls .control-group {
-            margin-bottom: 12px;
+            margin-bottom: 0;
         }
         
         .window-controls .control-group:last-child {
             margin-bottom: 0;
+        }
+
+        @media (max-width: 1200px) {
+            .content {
+                flex-direction: column;
+                overflow: visible;
+            }
+
+            .side-panel {
+                width: 100%;
+                overflow: visible;
+            }
+
+            .canvas-container {
+                min-height: 320px;
+            }
         }
         
         button {
@@ -307,17 +344,9 @@ export class WebviewUIManager {
         </div>
         
         <div class="content">
-            <div class="canvas-container">
-                <canvas id="imageCanvas"></canvas>
-            </div>
-            
-            <div class="sidebar">
+            <div class="side-panel side-panel--left">
                 <div class="info-panel">
                     <h3>File Information</h3>
-                    <div class="info-item">
-                        <span>File Name:</span>
-                        <span id="fileName">-</span>
-                    </div>
                     <div class="info-item">
                         <span>File Size:</span>
                         <span id="fileSize">-</span>
@@ -334,6 +363,34 @@ export class WebviewUIManager {
                         <span>Dimensions:</span>
                         <span id="dimensions">-</span>
                     </div>
+                    <div class="info-subsection">
+                        <h4>Statistics</h4>
+                        <div class="info-item">
+                            <span>Min:</span>
+                            <span id="sliceStatMin">-</span>
+                        </div>
+                        <div class="info-item">
+                            <span>Max:</span>
+                            <span id="sliceStatMax">-</span>
+                        </div>
+                        <div class="info-item">
+                            <span>Mean:</span>
+                            <span id="sliceStatMean">-</span>
+                        </div>
+                        <div class="info-item">
+                            <span>Sum:</span>
+                            <span id="sliceStatSum">-</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="canvas-container">
+                <canvas id="imageCanvas"></canvas>
+            </div>
+            
+            <div class="side-panel side-panel--right">
+                <div class="info-panel">
                     <div class="window-controls">
                         <h3>Window/Level Controls</h3>
                         <div class="control-group">
@@ -397,11 +454,14 @@ export class WebviewUIManager {
         const errorMessage = document.getElementById('errorMessage');
         
         // Info display elements
-        const fileNameEl = document.getElementById('fileName');
         const fileSizeEl = document.getElementById('fileSize');
         const numSlicesEl = document.getElementById('numSlices');
         const currentSliceEl = document.getElementById('currentSlice');
         const dimensionsEl = document.getElementById('dimensions');
+        const sliceStatMinEl = document.getElementById('sliceStatMin');
+        const sliceStatMaxEl = document.getElementById('sliceStatMax');
+        const sliceStatMeanEl = document.getElementById('sliceStatMean');
+        const sliceStatSumEl = document.getElementById('sliceStatSum');
         
         // Event listeners
         loadSliceButton.addEventListener('click', loadSlice);
@@ -461,7 +521,6 @@ export class WebviewUIManager {
         
         function handleFileInfo(info) {
             fileInfo = info;
-            fileNameEl.textContent = info.fileName;
             fileSizeEl.textContent = formatBytes(info.fileSize);
             updateSliceInfo();
             hideError();
@@ -538,7 +597,7 @@ export class WebviewUIManager {
             }
 
             if (!fileInfo) {
-                fileInfo = { fileSize, fileName: '-' };
+                fileInfo = { fileSize };
             } else {
                 fileInfo = { ...fileInfo, fileSize };
             }
@@ -742,6 +801,22 @@ export class WebviewUIManager {
         }
 
         function updateSliceRange(data) {
+            const statistics = computeSliceStatistics(data);
+            if (!statistics) {
+                sliceMin = 0;
+                sliceMax = 0;
+                clearSliceStatistics();
+                updateWindowControls();
+                return;
+            }
+
+            sliceMin = statistics.min;
+            sliceMax = statistics.max;
+            updateSliceStatisticsDisplay(statistics);
+            updateWindowControls();
+        }
+
+        function computeSliceStatistics(data) {
             const { width, height, dataType } = data;
             const rawData = decodeSliceData(data);
             const endianness = endiannessSelect.value === 'little';
@@ -749,23 +824,43 @@ export class WebviewUIManager {
             const numPixels = Math.min(width * height, Math.floor(rawData.byteLength / bytesPerPixel));
 
             if (numPixels <= 0) {
-                sliceMin = 0;
-                sliceMax = 0;
-                updateWindowControls();
-                return;
+                return null;
             }
 
             let min = getValue(0);
             let max = min;
+            let sum = min;
             for (let i = 1; i < numPixels; i++) {
                 const value = getValue(i * bytesPerPixel);
-                if (value < min) min = value;
-                if (value > max) max = value;
+                if (value < min) {
+                    min = value;
+                }
+                if (value > max) {
+                    max = value;
+                }
+                sum += value;
             }
 
-            sliceMin = min;
-            sliceMax = max;
-            updateWindowControls();
+            return {
+                min,
+                max,
+                mean: sum / numPixels,
+                sum
+            };
+        }
+
+        function updateSliceStatisticsDisplay(statistics) {
+            sliceStatMinEl.textContent = formatStatisticValue(statistics.min);
+            sliceStatMaxEl.textContent = formatStatisticValue(statistics.max);
+            sliceStatMeanEl.textContent = formatStatisticValue(statistics.mean);
+            sliceStatSumEl.textContent = formatStatisticValue(statistics.sum);
+        }
+
+        function clearSliceStatistics() {
+            sliceStatMinEl.textContent = '-';
+            sliceStatMaxEl.textContent = '-';
+            sliceStatMeanEl.textContent = '-';
+            sliceStatSumEl.textContent = '-';
         }
 
         function resetWindowToSliceRange() {
@@ -929,6 +1024,7 @@ export class WebviewUIManager {
             sliceMin = 0;
             sliceMax = 255;
             pendingSliceRequest = null;
+            clearSliceStatistics();
             updateWindowControls();
             updateSliceInfo();
         }
@@ -995,6 +1091,7 @@ export class WebviewUIManager {
             windowMax = null;
             sliceMin = 0;
             sliceMax = 255;
+            clearSliceStatistics();
             updateWindowControls();
             updateSliceInfo();
             
@@ -1014,6 +1111,10 @@ export class WebviewUIManager {
             const sizes = ['Bytes', 'KB', 'MB', 'GB'];
             const i = Math.floor(Math.log(bytes) / Math.log(k));
             return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        function formatStatisticValue(value) {
+            return Number.isFinite(value) ? String(value) : '-';
         }
         
         vscode.postMessage({ type: '${CONSTANTS.MESSAGE_TYPES.READY}' });

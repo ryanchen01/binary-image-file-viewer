@@ -4,7 +4,14 @@ All notable changes to the "binary-image-file-viewer" extension are documented h
 
 This project adheres to Keep a Changelog and Semantic Versioning.
 
-## [6.0.1] - 2026-05-09
+## [0.7.0] - 2025-05-09
+### Added
+- Added the statistics panel.
+
+### Changed
+- Changed the layout of side panels.
+
+## [0.6.1] - 2026-05-09
 ### Changed
 - Preserved the active window/level values when switching slices while keeping the window sliders bounded to the current slice's min/max range.
 

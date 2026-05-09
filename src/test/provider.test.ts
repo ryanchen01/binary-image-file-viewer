@@ -45,12 +45,54 @@ suite('BinaryImageEditorProvider', () => {
         assert.ok(html.includes('id="reloadSlice"'));
     });
 
+    test('generated HTML places file information left of the canvas and window controls on the right', () => {
+        const asAny = provider as any;
+        const html: string = asAny.getHtmlForWebview({} as any);
+        const leftPanelIndex = html.indexOf('class="side-panel side-panel--left"');
+        const canvasIndex = html.indexOf('class="canvas-container"');
+        const rightPanelIndex = html.indexOf('class="side-panel side-panel--right"');
+        const fileInfoIndex = html.indexOf('<h3>File Information</h3>', leftPanelIndex);
+        const windowControlsIndex = html.indexOf('<h3>Window/Level Controls</h3>', rightPanelIndex);
+
+        assert.ok(leftPanelIndex >= 0);
+        assert.ok(canvasIndex > leftPanelIndex);
+        assert.ok(rightPanelIndex > canvasIndex);
+        assert.ok(fileInfoIndex > leftPanelIndex && fileInfoIndex < canvasIndex);
+        assert.ok(windowControlsIndex > rightPanelIndex);
+    });
+
+    test('generated HTML places statistics under file information', () => {
+        const asAny = provider as any;
+        const html: string = asAny.getHtmlForWebview({} as any);
+        const fileInfoIndex = html.indexOf('<h3>File Information</h3>');
+        const statisticsIndex = html.indexOf('<h4>Statistics</h4>', fileInfoIndex);
+
+        assert.ok(statisticsIndex > fileInfoIndex);
+        assert.ok(!html.includes('id="fileName"'));
+        assert.ok(html.includes('id="sliceStatMin"'));
+        assert.ok(html.includes('id="sliceStatMax"'));
+        assert.ok(html.includes('id="sliceStatMean"'));
+        assert.ok(html.includes('id="sliceStatSum"'));
+    });
+
+    test('generated HTML narrows the left side panel independently', () => {
+        const asAny = provider as any;
+        const html: string = asAny.getHtmlForWebview({} as any);
+
+        assert.ok(html.includes('.side-panel--left {'));
+        assert.ok(html.includes('width: 260px;'));
+        assert.ok(html.includes('class="side-panel side-panel--left"'));
+        assert.ok(html.includes('class="side-panel side-panel--right"'));
+    });
+
     test('generated HTML can shrink inside resized VS Code editor area', () => {
         const asAny = provider as any;
         const html: string = asAny.getHtmlForWebview({} as any);
         assert.ok(html.includes('overflow: auto;'));
         assert.ok(html.includes('min-height: 0;'));
         assert.ok(html.includes('ResizeObserver'));
+        assert.ok(html.includes('@media (max-width: 1200px)'));
+        assert.ok(html.includes('flex-direction: column;'));
         assert.ok(!html.includes('calc(100vh - 48px)'));
         assert.ok(!html.includes('min-height: 400px'));
     });
@@ -81,6 +123,17 @@ suite('BinaryImageEditorProvider', () => {
         assert.ok(!html.includes('windowMax = clippedWindowMax;'));
         assert.ok(html.includes('windowMinInput.min = controlMin;'));
         assert.ok(html.includes('windowMaxInput.max = controlMax;'));
+    });
+
+    test('generated HTML computes and clears slice statistics from decoded slice values', () => {
+        const asAny = provider as any;
+        const html: string = asAny.getHtmlForWebview({} as any);
+
+        assert.ok(html.includes('function computeSliceStatistics(data)'));
+        assert.ok(html.includes('let sum = min;'));
+        assert.ok(html.includes('mean: sum / numPixels'));
+        assert.ok(html.includes('updateSliceStatisticsDisplay(statistics);'));
+        assert.ok(html.includes('clearSliceStatistics();'));
     });
 
     test('openCustomDocument returns a document with the same URI', async () => {

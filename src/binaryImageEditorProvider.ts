@@ -1,5 +1,4 @@
 import * as vscode from 'vscode';
-import * as path from 'path';
 import { CONSTANTS, SupportedDataType } from './constants';
 import { FileCacheManager } from './fileCacheManager';
 import { DataProcessor } from './dataProcessor';
@@ -131,15 +130,14 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
 
     /**
      * Send basic file information to the webview so that the UI can display
-     * name and size before any slice data is requested.
+     * file metadata before any slice data is requested.
      */
     private async sendFileData(webview: vscode.Webview, uri: vscode.Uri): Promise<void> {
         try {
             const stats = await this.fileCacheManager.getFileStats(uri);
             webview.postMessage({
                 type: CONSTANTS.MESSAGE_TYPES.FILE_INFO,
-                fileSize: stats.size,
-                fileName: path.basename(uri.fsPath)
+                fileSize: stats.size
             });
         } catch (error) {
             webview.postMessage({
