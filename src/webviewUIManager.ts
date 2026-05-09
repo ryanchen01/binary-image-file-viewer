@@ -16,20 +16,34 @@ export class WebviewUIManager {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Binary Image Viewer</title>
     <style>
+        html {
+            height: 100%;
+            box-sizing: border-box;
+        }
+
+        *,
+        *::before,
+        *::after {
+            box-sizing: inherit;
+        }
+
         body {
             font-family: var(--vscode-font-family);
             background-color: var(--vscode-editor-background);
             color: var(--vscode-editor-foreground);
             margin: 0;
             padding: 24px;
-            overflow: hidden;
+            height: 100%;
+            overflow: auto;
         }
         
         .container {
             display: flex;
             flex-direction: column;
-            height: calc(100vh - 48px);
+            height: 100%;
             max-width: 1400px;
+            min-height: 0;
+            width: 100%;
             margin: 0 auto;
         }
         
@@ -110,6 +124,7 @@ export class WebviewUIManager {
             flex: 1;
             gap: 24px;
             min-height: 0;
+            overflow: hidden;
         }
         
         .canvas-container {
@@ -119,7 +134,7 @@ export class WebviewUIManager {
             align-items: center;
             border: 1px solid var(--vscode-panel-border);
             background-color: var(--vscode-editor-background);
-            min-height: 400px;
+            min-height: 0;
             overflow: hidden;
             border-radius: 6px;
             position: relative;
@@ -141,6 +156,8 @@ export class WebviewUIManager {
             flex-direction: column;
             gap: 20px;
             flex-shrink: 0;
+            min-height: 0;
+            overflow-y: auto;
         }
         
         .info-panel {
@@ -284,6 +301,9 @@ export class WebviewUIManager {
             <div class="control-group">
                 <button id="loadSlice" style="margin-top: 20px;">Load Slice</button>
             </div>
+            <div class="control-group">
+                <button id="reloadSlice" style="margin-top: 20px;">Reload</button>
+            </div>
         </div>
         
         <div class="content">
@@ -351,8 +371,12 @@ export class WebviewUIManager {
         let sliceMax = 0;
         let windowMin = null;
         let windowMax = null;
-        let globalComputed = false;
         let currentPlane = 'axial';
+        let resizeAnimationFrame = null;
+        let sliceRequestInFlight = false;
+        let pendingSliceRequest = null;
+        let activeSliceRequest = null;
+        let nextSliceRequestId = 1;
         
         // DOM elements
         const widthInput = document.getElementById('width');
@@ -362,6 +386,7 @@ export class WebviewUIManager {
         const sliceInput = document.getElementById('slice');
         const sliceSlider = document.getElementById('sliceSlider');
         const loadSliceButton = document.getElementById('loadSlice');
+        const reloadSliceButton = document.getElementById('reloadSlice');
         const windowMinInput = document.getElementById('windowMin');
         const windowMaxInput = document.getElementById('windowMax');
         const resetWindowButton = document.getElementById('resetWindow');
@@ -380,9 +405,11 @@ export class WebviewUIManager {
         
         // Event listeners
         loadSliceButton.addEventListener('click', loadSlice);
-        widthInput.addEventListener('input', updateSliceInfo);
-        heightInput.addEventListener('input', updateSliceInfo);
-        dataTypeSelect.addEventListener('change', updateSliceInfo);
+        reloadSliceButton.addEventListener('click', reloadSlice);
+        widthInput.addEventListener('input', handleMetadataChange);
+        heightInput.addEventListener('input', handleMetadataChange);
+        dataTypeSelect.addEventListener('change', handleMetadataChange);
+        endiannessSelect.addEventListener('change', handleMetadataChange);
         
         // Slice navigation event listeners
         sliceInput.addEventListener('input', syncSliceControls);
@@ -398,12 +425,12 @@ export class WebviewUIManager {
         // Mouse wheel navigation on canvas
         canvas.addEventListener('wheel', handleMouseWheel, { passive: false });        
         
-        // Handle window resize to rescale canvas
-        window.addEventListener('resize', () => {
-            if (currentSliceData) {
-                setTimeout(scaleCanvasToFit, 100);
-            }
-        });
+        // Handle editor/sidebar resize to rescale canvas when VS Code panels move.
+        window.addEventListener('resize', scheduleCanvasScale);
+        if (typeof ResizeObserver !== 'undefined' && canvas.parentElement) {
+            const resizeObserver = new ResizeObserver(scheduleCanvasScale);
+            resizeObserver.observe(canvas.parentElement);
+        }
         
         // Message handling
         window.addEventListener('message', event => {
@@ -427,7 +454,7 @@ export class WebviewUIManager {
                     }
                     break;
                 case '${CONSTANTS.MESSAGE_TYPES.ERROR}':
-                    showError(message.message);
+                    handleError(message);
                     break;
             }
         });
@@ -437,28 +464,53 @@ export class WebviewUIManager {
             fileNameEl.textContent = info.fileName;
             fileSizeEl.textContent = formatBytes(info.fileSize);
             updateSliceInfo();
-            if (!globalComputed) {
-                vscode.postMessage({
-                    type: '${CONSTANTS.MESSAGE_TYPES.COMPUTE_GLOBAL_WINDOW}',
-                    width: parseInt(widthInput.value),
-                    height: parseInt(heightInput.value),
-                    dataType: dataTypeSelect.value,
-                    endianness: endiannessSelect.value === 'little'
-                });
-                globalComputed = true;
-            }
             hideError();
         }
         
         function handleSliceData(data) {
-            currentSliceData = data;
-            renderSlice(data);
-            currentSliceEl.textContent = data.slice;
-            dimensionsEl.textContent = \`\${data.width} × \${data.height}\`;
-            hideError();
+            if (data.requestId !== undefined && (!activeSliceRequest || data.requestId !== activeSliceRequest.requestId)) {
+                return;
+            }
+
+            const completedRequest = activeSliceRequest;
+            try {
+                if (completedRequest && !requestMatchesCurrentControls(completedRequest)) {
+                    return;
+                }
+
+                const rawData = decodeSliceData(data);
+                updateFileSize(data.fileSize);
+                currentSliceData = { ...data, rawData };
+                updateSliceRange(currentSliceData);
+                resetWindowToSliceRange();
+                renderSlice(currentSliceData);
+                currentSliceEl.textContent = data.slice;
+                dimensionsEl.textContent = \`\${data.width} × \${data.height}\`;
+                hideError();
+            } catch (error) {
+                showError(String(error));
+            } finally {
+                finishSliceRequest(completedRequest);
+            }
         }
         
         function loadSlice() {
+            requestSlice(false);
+        }
+
+        function reloadSlice() {
+            requestSlice(true);
+        }
+
+        function requestSlice(forceReload) {
+            const request = buildSliceRequest(forceReload);
+            if (!request) {
+                return;
+            }
+            enqueueSliceRequest(request);
+        }
+
+        function buildSliceRequest(forceReload) {
             const width = parseInt(widthInput.value);
             const height = parseInt(heightInput.value);
             const slice = parseInt(sliceInput.value);
@@ -469,17 +521,92 @@ export class WebviewUIManager {
                 showError('Please enter valid positive values for width, height, and slice.');
                 return;
             }
-            
-            vscode.postMessage({
-                type: '${CONSTANTS.MESSAGE_TYPES.READ_SLICE}',
+
+            return {
                 width,
                 height,
                 slice,
                 dataType,
                 endianness,
                 plane: currentPlane,
-                forceReload: true
+                forceReload
+            };
+        }
+
+        function updateFileSize(fileSize) {
+            if (typeof fileSize !== 'number' || !Number.isFinite(fileSize)) {
+                return;
+            }
+
+            if (!fileInfo) {
+                fileInfo = { fileSize, fileName: '-' };
+            } else {
+                fileInfo = { ...fileInfo, fileSize };
+            }
+
+            fileSizeEl.textContent = formatBytes(fileSize);
+            updateSliceInfo();
+        }
+
+        function enqueueSliceRequest(request) {
+            if (sliceRequestInFlight) {
+                pendingSliceRequest = request;
+                return;
+            }
+
+            sendSliceRequest(request);
+        }
+
+        function sendSliceRequest(request) {
+            const requestId = nextSliceRequestId++;
+            activeSliceRequest = { ...request, requestId };
+            sliceRequestInFlight = true;
+
+            vscode.postMessage({
+                type: '${CONSTANTS.MESSAGE_TYPES.READ_SLICE}',
+                ...activeSliceRequest
             });
+        }
+
+        function finishSliceRequest(completedRequest) {
+            sliceRequestInFlight = false;
+            activeSliceRequest = null;
+
+            if (!pendingSliceRequest) {
+                return;
+            }
+
+            const nextRequest = pendingSliceRequest;
+            pendingSliceRequest = null;
+
+            if (!completedRequest || !isSameSliceRequest(nextRequest, completedRequest)) {
+                sendSliceRequest(nextRequest);
+            }
+        }
+
+        function isSameSliceRequest(left, right) {
+            return left.width === right.width &&
+                left.height === right.height &&
+                left.slice === right.slice &&
+                left.dataType === right.dataType &&
+                left.endianness === right.endianness &&
+                left.plane === right.plane;
+        }
+
+        function requestMatchesCurrentControls(request) {
+            return request.width === parseInt(widthInput.value) &&
+                request.height === parseInt(heightInput.value) &&
+                request.slice === parseInt(sliceInput.value) &&
+                request.dataType === dataTypeSelect.value &&
+                request.endianness === (endiannessSelect.value === 'little') &&
+                request.plane === currentPlane;
+        }
+
+        function handleError(message) {
+            showError(message.message);
+            if (message.requestId !== undefined && activeSliceRequest && message.requestId === activeSliceRequest.requestId) {
+                finishSliceRequest(null);
+            }
         }
         
         function syncSliceControls(event) {
@@ -542,19 +669,37 @@ export class WebviewUIManager {
             sliceInput.value = newSlice;
             sliceSlider.value = newSlice;
         }
-        
-        function renderSlice(data) {
-            const { width, height, dataType } = data;
-            const rawData = new Uint8Array(data.data);
-            const endianness = endiannessSelect.value === 'little';
 
-            canvas.width = width;
-            canvas.height = height;
+        function decodeSliceData(data) {
+            if (data.rawData instanceof Uint8Array) {
+                return data.rawData;
+            }
 
-            const imageData = ctx.createImageData(width, height);
-            const pixels = imageData.data;
+            if (data.encoding === 'base64') {
+                const binary = atob(data.data);
+                const bytes = new Uint8Array(binary.length);
+                for (let i = 0; i < binary.length; i++) {
+                    bytes[i] = binary.charCodeAt(i);
+                }
+                if (data.byteLength !== undefined && bytes.byteLength !== data.byteLength) {
+                    throw new Error('Decoded slice byte length does not match expected length');
+                }
+                return bytes;
+            }
+
+            if (data.data instanceof ArrayBuffer) {
+                return new Uint8Array(data.data);
+            }
+
+            if (data.data instanceof Uint8Array) {
+                return data.data;
+            }
+
+            return new Uint8Array(data.data);
+        }
+
+        function createPixelReader(rawData, dataType, endianness) {
             const view = new DataView(rawData.buffer, rawData.byteOffset, rawData.byteLength);
-
             let bytesPerPixel = 1;
             let getValue;
             switch (dataType) {
@@ -594,6 +739,59 @@ export class WebviewUIManager {
                     throw new Error(\`Unsupported data type: \${dataType}\`);
             }
 
+            return { bytesPerPixel, getValue };
+        }
+
+        function updateSliceRange(data) {
+            const { width, height, dataType } = data;
+            const rawData = decodeSliceData(data);
+            const endianness = endiannessSelect.value === 'little';
+            const { bytesPerPixel, getValue } = createPixelReader(rawData, dataType, endianness);
+            const numPixels = Math.min(width * height, Math.floor(rawData.byteLength / bytesPerPixel));
+
+            if (numPixels <= 0) {
+                sliceMin = 0;
+                sliceMax = 0;
+                updateWindowControls();
+                return;
+            }
+
+            let min = getValue(0);
+            let max = min;
+            for (let i = 1; i < numPixels; i++) {
+                const value = getValue(i * bytesPerPixel);
+                if (value < min) min = value;
+                if (value > max) max = value;
+            }
+
+            sliceMin = min;
+            sliceMax = max;
+            updateWindowControls();
+        }
+
+        function resetWindowToSliceRange() {
+            windowMin = sliceMin;
+            windowMax = sliceMax;
+            updateWindowControls();
+        }
+        
+        function renderSlice(data) {
+            const { width, height, dataType } = data;
+            const rawData = decodeSliceData(data);
+            const endianness = endiannessSelect.value === 'little';
+
+            canvas.width = width;
+            canvas.height = height;
+
+            const imageData = ctx.createImageData(width, height);
+            const pixels = imageData.data;
+            const { bytesPerPixel, getValue } = createPixelReader(rawData, dataType, endianness);
+
+            if (windowMin === null || windowMax === null) {
+                updateSliceRange(data);
+                resetWindowToSliceRange();
+            }
+
             const range = windowMax - windowMin || 1;
             const numPixels = width * height;
             for (let i = 0; i < numPixels; i++) {
@@ -616,9 +814,13 @@ export class WebviewUIManager {
         
         function scaleCanvasToFit() {
             const container = canvas.parentElement;
+            if (!container) {
+                return;
+            }
+
             const containerRect = container.getBoundingClientRect();
-            const containerWidth = containerRect.width - 40;
-            const containerHeight = containerRect.height - 40;
+            const containerWidth = Math.max(0, containerRect.width - 40);
+            const containerHeight = Math.max(0, containerRect.height - 40);
             
             const imageWidth = canvas.width;
             const imageHeight = canvas.height;
@@ -634,6 +836,17 @@ export class WebviewUIManager {
                 canvas.style.width = displayWidth + 'px';
                 canvas.style.height = displayHeight + 'px';
             }
+        }
+
+        function scheduleCanvasScale() {
+            if (!currentSliceData || resizeAnimationFrame !== null) {
+                return;
+            }
+
+            resizeAnimationFrame = requestAnimationFrame(() => {
+                resizeAnimationFrame = null;
+                scaleCanvasToFit();
+            });
         }
         
         function findMinMax(values) {
@@ -651,9 +864,17 @@ export class WebviewUIManager {
         function updateWindowControls() {
             let minVal = sliceMin;
             let maxVal = sliceMax;
-            if (sliceMin === sliceMax) {
-                minVal = sliceMin - 0.5;
-                maxVal = sliceMax + 0.5;
+            if (windowMin !== null) {
+                minVal = Math.min(minVal, windowMin);
+                maxVal = Math.max(maxVal, windowMin);
+            }
+            if (windowMax !== null) {
+                minVal = Math.min(minVal, windowMax);
+                maxVal = Math.max(maxVal, windowMax);
+            }
+            if (minVal === maxVal) {
+                minVal = minVal - 0.5;
+                maxVal = maxVal + 0.5;
             }
             windowMinInput.min = minVal;
             windowMinInput.max = maxVal;
@@ -662,7 +883,7 @@ export class WebviewUIManager {
             windowMinInput.value = windowMin !== null ? windowMin : minVal;
             windowMaxInput.value = windowMax !== null ? windowMax : maxVal;
             const dataRange = maxVal - minVal;
-            const step = dataRange / 255;
+            const step = dataRange > 0 ? dataRange / 255 : 1;
             windowMinInput.step = step;
             windowMaxInput.step = step;
         }
@@ -681,23 +902,13 @@ export class WebviewUIManager {
         }
         
         function resetWindow() {
-            const width = parseInt(widthInput.value);
-            const height = parseInt(heightInput.value);
-            if (width > 0 && height > 0) {
-                vscode.postMessage({
-                    type: '${CONSTANTS.MESSAGE_TYPES.COMPUTE_GLOBAL_WINDOW}',
-                    width,
-                    height,
-                    dataType: dataTypeSelect.value,
-                    endianness: endiannessSelect.value === 'little'
-                });
+            if (!currentSliceData) {
+                return;
             }
-            windowMin = sliceMin;
-            windowMax = sliceMax;
-            updateWindowControls();
-            if (currentSliceData) {
-                renderSlice(currentSliceData);
-            }
+
+            updateSliceRange(currentSliceData);
+            resetWindowToSliceRange();
+            renderSlice(currentSliceData);
         }
         
         function showError(message) {
@@ -707,6 +918,16 @@ export class WebviewUIManager {
         
         function hideError() {
             errorPanel.style.display = 'none';
+        }
+
+        function handleMetadataChange() {
+            windowMin = null;
+            windowMax = null;
+            sliceMin = 0;
+            sliceMax = 255;
+            pendingSliceRequest = null;
+            updateWindowControls();
+            updateSliceInfo();
         }
         
         function updateSliceInfo() {
@@ -766,7 +987,12 @@ export class WebviewUIManager {
         function togglePlane() {
             currentPlane = currentPlane === 'axial' ? 'coronal' : 'axial';
             togglePlaneButton.textContent = 'Plane: ' + currentPlane.charAt(0).toUpperCase() + currentPlane.slice(1);
-            
+
+            windowMin = null;
+            windowMax = null;
+            sliceMin = 0;
+            sliceMax = 255;
+            updateWindowControls();
             updateSliceInfo();
             
             sliceInput.value = '0';

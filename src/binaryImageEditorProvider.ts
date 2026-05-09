@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { CONSTANTS } from './constants';
+import { CONSTANTS, SupportedDataType } from './constants';
 import { FileCacheManager } from './fileCacheManager';
 import { DataProcessor } from './dataProcessor';
 import { SliceReader } from './sliceReader';
@@ -90,7 +90,8 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
                             message.dataType,
                             /* endianness */ undefined,
                             message.plane || 'axial',
-                            message.forceReload || false
+                            message.forceReload || false,
+                            message.requestId
                         );
                         break;
                     case CONSTANTS.MESSAGE_TYPES.COMPUTE_GLOBAL_WINDOW:
@@ -134,10 +135,7 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
      */
     private async sendFileData(webview: vscode.Webview, uri: vscode.Uri): Promise<void> {
         try {
-            const stats = await vscode.workspace.fs.stat(uri);
-            if (stats.size > CONSTANTS.MAX_FILE_SIZE) {
-                throw new Error(`File size ${stats.size} exceeds safe limit`);
-            }
+            const stats = await this.fileCacheManager.getFileStats(uri);
             webview.postMessage({
                 type: CONSTANTS.MESSAGE_TYPES.FILE_INFO,
                 fileSize: stats.size,
@@ -172,32 +170,65 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
         dataType: string,
         _endianness: boolean = true,
         plane: string = 'axial',
-        forceReload: boolean = false
+        forceReload: boolean = false,
+        requestId?: number
     ): Promise<void> {
         try {
             if (forceReload) {
                 this.fileCacheManager.evictFile(uri);
             }
-            const fileData = await this.fileCacheManager.getFileData(uri);
-            
-            const { sliceData, resultWidth, resultHeight } = this.sliceReader.readSlice(
-                fileData, width, height, slice, dataType as any, plane
-            );
+
+            const typedDataType = dataType as SupportedDataType;
+            let sliceData: Uint8Array;
+            let resultWidth: number;
+            let resultHeight: number;
+            let fileSize: number;
+
+            if (plane === 'axial') {
+                const stats = await this.fileCacheManager.getFileStats(uri);
+                fileSize = stats.size;
+                const { offset, length } = this.sliceReader.getAxialSliceRange(
+                    stats.size, width, height, slice, typedDataType
+                );
+                sliceData = await this.fileCacheManager.readFileRange(uri, offset, length);
+                resultWidth = width;
+                resultHeight = height;
+            } else {
+                const fileData = await this.fileCacheManager.getFileData(uri);
+                fileSize = fileData.byteLength;
+                const result = this.sliceReader.readSlice(
+                    fileData, width, height, slice, typedDataType, plane
+                );
+                sliceData = result.sliceData;
+                resultWidth = result.resultWidth;
+                resultHeight = result.resultHeight;
+            }
+
+            const encodedData = Buffer.from(
+                sliceData.buffer,
+                sliceData.byteOffset,
+                sliceData.byteLength
+            ).toString('base64');
 
             // Convert to the appropriate format and send to webview
             webview.postMessage({
                 type: CONSTANTS.MESSAGE_TYPES.SLICE_DATA,
-                data: Array.from(sliceData),
+                data: encodedData,
+                encoding: 'base64',
+                byteLength: sliceData.byteLength,
                 width: resultWidth,
                 height: resultHeight,
+                fileSize,
                 slice,
                 dataType,
-                plane
+                plane,
+                requestId
             });
         } catch (error) {
             webview.postMessage({
                 type: CONSTANTS.MESSAGE_TYPES.ERROR,
-                message: `Failed to read slice: ${error}`
+                message: `Failed to read slice: ${error}`,
+                requestId
             });
         }
     }

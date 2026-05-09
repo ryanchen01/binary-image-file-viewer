@@ -53,19 +53,40 @@ export class SliceReader {
             resultHeight = depth;
         } else {
             // Axial view (default)
-            const sliceSize = width * height * bytesPerPixel;
-            const offset = slice * sliceSize;
-            
-            if (offset + sliceSize > fileData.length) {
-                throw new Error('Slice extends beyond file size');
-            }
-            
-            sliceData = fileData.slice(offset, offset + sliceSize);
+            const { offset, length } = this.getAxialSliceRange(fileData.length, width, height, slice, dataType);
+            sliceData = fileData.slice(offset, offset + length);
             resultWidth = width;
             resultHeight = height;
         }
 
         return { sliceData, resultWidth, resultHeight };
+    }
+
+    /**
+     * Calculate the byte range for an axial slice.
+     */
+    public getAxialSliceRange(
+        fileSize: number,
+        width: number,
+        height: number,
+        slice: number,
+        dataType: SupportedDataType
+    ): { offset: number; length: number } {
+        validateMetadata(width, height, dataType);
+
+        if (slice < 0) {
+            throw new Error('Slice index must be non-negative');
+        }
+
+        const bytesPerPixel = getBytesPerPixel(dataType);
+        const length = width * height * bytesPerPixel;
+        const offset = slice * length;
+
+        if (offset + length > fileSize) {
+            throw new Error('Slice extends beyond file size');
+        }
+
+        return { offset, length };
     }
 
     /**
