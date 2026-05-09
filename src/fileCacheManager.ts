@@ -51,42 +51,52 @@ export class FileCacheManager {
      * Read a byte range without forcing the whole file into memory.
      */
     public async readFileRange(uri: vscode.Uri, offset: number, length: number): Promise<Uint8Array> {
-        if (!Number.isFinite(offset) || offset < 0 || !Number.isFinite(length) || length < 0) {
-            throw new Error('Invalid file range');
-        }
+        return this.readFileRanges(uri, [{ offset, length }]);
+    }
 
-        const cachedData = this.fileCache.get(uri.toString());
-        if (cachedData) {
-            if (offset + length > cachedData.length) {
-                throw new Error('Requested range extends beyond cached file size');
-            }
-            return cachedData.slice(offset, offset + length);
+    /**
+     * Read one or more byte ranges with a single file handle.
+     */
+    public async readFileRanges(uri: vscode.Uri, ranges: Array<{ offset: number; length: number }>): Promise<Uint8Array> {
+        let totalLength = 0;
+        for (const range of ranges) {
+            this.validateFileRange(range.offset, range.length);
+            totalLength += range.length;
         }
 
         try {
             const stats = await this.getFileStats(uri);
-            if (offset + length > stats.size) {
-                throw new Error('Requested range extends beyond file size');
-            }
-
-            if (uri.scheme === 'file') {
-                const fileHandle = await fs.open(uri.fsPath, 'r');
-                try {
-                    const buffer = Buffer.allocUnsafe(length);
-                    const { bytesRead } = await fileHandle.read(buffer, 0, length, offset);
-                    if (bytesRead !== length) {
-                        throw new Error(`Expected ${length} bytes but read ${bytesRead}`);
-                    }
-                    return buffer;
-                } finally {
-                    await fileHandle.close();
+            for (const range of ranges) {
+                if (range.offset + range.length > stats.size) {
+                    throw new Error('Requested range extends beyond file size');
                 }
             }
 
-            const fileData = await this.getFileData(uri);
-            return fileData.slice(offset, offset + length);
+            const fileHandle = await fs.open(uri.fsPath, 'r');
+            try {
+                const buffer = Buffer.allocUnsafe(totalLength);
+                let targetOffset = 0;
+
+                for (const range of ranges) {
+                    const { bytesRead } = await fileHandle.read(buffer, targetOffset, range.length, range.offset);
+                    if (bytesRead !== range.length) {
+                        throw new Error(`Expected ${range.length} bytes but read ${bytesRead}`);
+                    }
+                    targetOffset += range.length;
+                }
+
+                return buffer;
+            } finally {
+                await fileHandle.close();
+            }
         } catch (err) {
             throw new Error(`Unable to read file range: ${err}`);
+        }
+    }
+
+    private validateFileRange(offset: number, length: number): void {
+        if (!Number.isFinite(offset) || offset < 0 || !Number.isFinite(length) || length < 0) {
+            throw new Error('Invalid file range');
         }
     }
 

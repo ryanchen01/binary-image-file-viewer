@@ -4,6 +4,21 @@ All notable changes to the "binary-image-file-viewer" extension are documented h
 
 This project adheres to Keep a Changelog and Semantic Versioning.
 
+## [0.7.1] - 2026-05-09
+### Added
+- Added an in-webview slice cache with nearby axial slice prefetching for smoother navigation.
+- Added duplicate prefetch suppression and bounded cache eviction for prefetched slice data.
+- Added coronal slice byte-range calculation so coronal views can be assembled from row reads.
+
+### Changed
+- Changed slice loading to use byte-range reads through `fs.promises.open()` and `fileHandle.read()` for both axial and coronal slices.
+- Changed slice requests and responses to preserve endianness, request priority, and request IDs through the extension host and webview.
+- Cleared slice cache and prefetch state when metadata or plane changes so stale slice data is not reused.
+
+### Fixed
+- Ignored stale prefetch responses and errors so they cannot render over the active slice or clear newer request state.
+- Avoided `vscode.workspace.fs.readFile()` in slice loading paths so large `.raw` volumes are not read entirely for slice navigation.
+
 ## [0.7.0] - 2025-05-09
 ### Added
 - Added the statistics panel.

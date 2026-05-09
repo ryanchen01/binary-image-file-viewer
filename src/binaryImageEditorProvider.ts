@@ -87,10 +87,11 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
                             message.height,
                             message.slice,
                             message.dataType,
-                            /* endianness */ undefined,
+                            message.endianness,
                             message.plane || 'axial',
                             message.forceReload || false,
-                            message.requestId
+                            message.requestId,
+                            message.priority || 'visible'
                         );
                         break;
                     case CONSTANTS.MESSAGE_TYPES.COMPUTE_GLOBAL_WINDOW:
@@ -169,7 +170,8 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
         _endianness: boolean = true,
         plane: string = 'axial',
         forceReload: boolean = false,
-        requestId?: number
+        requestId?: number,
+        priority: string = 'visible'
     ): Promise<void> {
         try {
             if (forceReload) {
@@ -192,14 +194,14 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
                 resultWidth = width;
                 resultHeight = height;
             } else {
-                const fileData = await this.fileCacheManager.getFileData(uri);
-                fileSize = fileData.byteLength;
-                const result = this.sliceReader.readSlice(
-                    fileData, width, height, slice, typedDataType, plane
+                const stats = await this.fileCacheManager.getFileStats(uri);
+                fileSize = stats.size;
+                const { ranges, resultWidth: coronalWidth, resultHeight: coronalHeight } = this.sliceReader.getCoronalSliceRanges(
+                    stats.size, width, height, slice, typedDataType
                 );
-                sliceData = result.sliceData;
-                resultWidth = result.resultWidth;
-                resultHeight = result.resultHeight;
+                sliceData = await this.fileCacheManager.readFileRanges(uri, ranges);
+                resultWidth = coronalWidth;
+                resultHeight = coronalHeight;
             }
 
             const encodedData = Buffer.from(
@@ -220,12 +222,15 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
                 slice,
                 dataType,
                 plane,
+                endianness: _endianness,
+                priority,
                 requestId
             });
         } catch (error) {
             webview.postMessage({
                 type: CONSTANTS.MESSAGE_TYPES.ERROR,
                 message: `Failed to read slice: ${error}`,
+                priority,
                 requestId
             });
         }

@@ -433,7 +433,14 @@ export class WebviewUIManager {
         let sliceRequestInFlight = false;
         let pendingSliceRequest = null;
         let activeSliceRequest = null;
+        let prefetchRequestInFlight = false;
+        let activePrefetchRequest = null;
+        let prefetchQueue = [];
         let nextSliceRequestId = 1;
+        const sliceCache = new Map();
+        const inFlightPrefetchKeys = new Set();
+        const PREFETCH_RADIUS = 5;
+        const MAX_SLICE_CACHE_ENTRIES = 24;
         
         // DOM elements
         const widthInput = document.getElementById('width');
@@ -527,24 +534,24 @@ export class WebviewUIManager {
         }
         
         function handleSliceData(data) {
+            if (data.priority === 'prefetch') {
+                handlePrefetchSliceData(data);
+                return;
+            }
+
             if (data.requestId !== undefined && (!activeSliceRequest || data.requestId !== activeSliceRequest.requestId)) {
                 return;
             }
 
             const completedRequest = activeSliceRequest;
             try {
-                if (completedRequest && !requestMatchesCurrentControls(completedRequest)) {
-                    return;
-                }
-
-                const rawData = decodeSliceData(data);
+                const receivedData = normalizeReceivedSliceData(data, completedRequest);
+                cacheSliceData(receivedData);
                 updateFileSize(data.fileSize);
-                currentSliceData = { ...data, rawData };
-                updateSliceRange(currentSliceData);
-                renderSlice(currentSliceData);
-                currentSliceEl.textContent = data.slice;
-                dimensionsEl.textContent = \`\${data.width} × \${data.height}\`;
-                hideError();
+                if (completedRequest && requestMatchesCurrentControls(completedRequest)) {
+                    displaySliceData(receivedData);
+                    hideError();
+                }
             } catch (error) {
                 showError(String(error));
             } finally {
@@ -561,17 +568,33 @@ export class WebviewUIManager {
         }
 
         function requestSlice(forceReload) {
-            const request = buildSliceRequest(forceReload);
+            if (forceReload) {
+                clearSliceCacheAndPrefetch();
+            }
+
+            const request = buildSliceRequest(forceReload, 'visible');
             if (!request) {
                 return;
             }
-            enqueueSliceRequest(request);
+
+            const cachedSlice = forceReload ? null : getCachedSlice(request.cacheKey);
+            if (cachedSlice) {
+                displaySliceData(cachedSlice);
+                hideError();
+            } else if (activePrefetchRequest && activePrefetchRequest.cacheKey === request.cacheKey) {
+                // The prefetch response will render if this slice is still current.
+            } else {
+                removeQueuedPrefetch(request.cacheKey);
+                enqueueSliceRequest(request);
+            }
+
+            enqueueNearbyPrefetchRequests(request);
         }
 
-        function buildSliceRequest(forceReload) {
+        function buildSliceRequest(forceReload, priority, sliceOverride) {
             const width = parseInt(widthInput.value);
             const height = parseInt(heightInput.value);
-            const slice = parseInt(sliceInput.value);
+            const slice = sliceOverride !== undefined ? sliceOverride : parseInt(sliceInput.value);
             const dataType = dataTypeSelect.value;
             const endianness = endiannessSelect.value === 'little';
             
@@ -580,15 +603,19 @@ export class WebviewUIManager {
                 return;
             }
 
-            return {
+            const request = {
                 width,
                 height,
                 slice,
                 dataType,
                 endianness,
                 plane: currentPlane,
-                forceReload
+                forceReload,
+                priority
             };
+
+            request.cacheKey = buildSliceCacheKey(request);
+            return request;
         }
 
         function updateFileSize(fileSize) {
@@ -607,6 +634,7 @@ export class WebviewUIManager {
         }
 
         function enqueueSliceRequest(request) {
+            request.priority = 'visible';
             if (sliceRequestInFlight) {
                 pendingSliceRequest = request;
                 return;
@@ -617,7 +645,7 @@ export class WebviewUIManager {
 
         function sendSliceRequest(request) {
             const requestId = nextSliceRequestId++;
-            activeSliceRequest = { ...request, requestId };
+            activeSliceRequest = { ...request, priority: 'visible', requestId };
             sliceRequestInFlight = true;
 
             vscode.postMessage({
@@ -631,6 +659,7 @@ export class WebviewUIManager {
             activeSliceRequest = null;
 
             if (!pendingSliceRequest) {
+                processPrefetchQueue();
                 return;
             }
 
@@ -639,7 +668,10 @@ export class WebviewUIManager {
 
             if (!completedRequest || !isSameSliceRequest(nextRequest, completedRequest)) {
                 sendSliceRequest(nextRequest);
+                return;
             }
+
+            processPrefetchQueue();
         }
 
         function isSameSliceRequest(left, right) {
@@ -661,6 +693,19 @@ export class WebviewUIManager {
         }
 
         function handleError(message) {
+            if (message.priority === 'prefetch') {
+                if (message.requestId !== undefined && (!activePrefetchRequest || message.requestId !== activePrefetchRequest.requestId)) {
+                    return;
+                }
+
+                const completedRequest = activePrefetchRequest;
+                if (completedRequest && requestMatchesCurrentControls(completedRequest)) {
+                    showError(message.message);
+                }
+                finishPrefetchRequest(completedRequest);
+                return;
+            }
+
             showError(message.message);
             if (message.requestId !== undefined && activeSliceRequest && message.requestId === activeSliceRequest.requestId) {
                 finishSliceRequest(null);
@@ -726,6 +771,182 @@ export class WebviewUIManager {
         function navigateToSlice(newSlice) {
             sliceInput.value = newSlice;
             sliceSlider.value = newSlice;
+        }
+
+        function buildSliceCacheKey(request) {
+            const byteOrder = request.endianness ? 'little' : 'big';
+            return [
+                request.width,
+                request.height,
+                request.dataType,
+                byteOrder,
+                request.plane,
+                request.slice
+            ].join('|');
+        }
+
+        function getCachedSlice(cacheKey) {
+            const cachedSlice = sliceCache.get(cacheKey);
+            if (!cachedSlice) {
+                return null;
+            }
+
+            sliceCache.delete(cacheKey);
+            sliceCache.set(cacheKey, cachedSlice);
+            return cachedSlice;
+        }
+
+        function cacheSliceData(data) {
+            if (!data.cacheKey) {
+                data.cacheKey = buildSliceCacheKey(data);
+            }
+
+            sliceCache.delete(data.cacheKey);
+            sliceCache.set(data.cacheKey, data);
+
+            while (sliceCache.size > MAX_SLICE_CACHE_ENTRIES) {
+                const oldestKey = sliceCache.keys().next().value;
+                sliceCache.delete(oldestKey);
+            }
+        }
+
+        function clearSliceCacheAndPrefetch() {
+            sliceCache.clear();
+            prefetchQueue = [];
+            inFlightPrefetchKeys.clear();
+            activePrefetchRequest = null;
+            prefetchRequestInFlight = false;
+            activeSliceRequest = null;
+            pendingSliceRequest = null;
+            sliceRequestInFlight = false;
+        }
+
+        function normalizeReceivedSliceData(data, request) {
+            const rawData = decodeSliceData(data);
+            const receivedData = {
+                ...data,
+                data: undefined,
+                rawData,
+                endianness: request ? request.endianness : data.endianness,
+                cacheKey: request ? request.cacheKey : undefined
+            };
+
+            if (!receivedData.cacheKey) {
+                receivedData.cacheKey = buildSliceCacheKey(receivedData);
+            }
+
+            return receivedData;
+        }
+
+        function displaySliceData(data) {
+            currentSliceData = data;
+            updateSliceRange(currentSliceData);
+            renderSlice(currentSliceData);
+            currentSliceEl.textContent = data.slice;
+            dimensionsEl.textContent = \`\${data.width} × \${data.height}\`;
+        }
+
+        function enqueueNearbyPrefetchRequests(targetRequest) {
+            if (targetRequest.plane !== 'axial' || targetRequest.forceReload) {
+                return;
+            }
+
+            const maxSlice = parseInt(sliceInput.max);
+            if (!Number.isFinite(maxSlice) || maxSlice < 0) {
+                return;
+            }
+
+            const minSlice = Math.max(0, targetRequest.slice - PREFETCH_RADIUS);
+            const lastSlice = Math.min(maxSlice, targetRequest.slice + PREFETCH_RADIUS);
+
+            for (let slice = minSlice; slice <= lastSlice; slice++) {
+                if (slice === targetRequest.slice) {
+                    continue;
+                }
+
+                const request = buildSliceRequest(false, 'prefetch', slice);
+                if (!request || isSliceRequestKnown(request.cacheKey)) {
+                    continue;
+                }
+
+                prefetchQueue.push(request);
+            }
+
+            processPrefetchQueue();
+        }
+
+        function isSliceRequestKnown(cacheKey) {
+            return sliceCache.has(cacheKey) ||
+                inFlightPrefetchKeys.has(cacheKey) ||
+                (activePrefetchRequest && activePrefetchRequest.cacheKey === cacheKey) ||
+                (activeSliceRequest && activeSliceRequest.cacheKey === cacheKey) ||
+                (pendingSliceRequest && pendingSliceRequest.cacheKey === cacheKey) ||
+                prefetchQueue.some(request => request.cacheKey === cacheKey);
+        }
+
+        function removeQueuedPrefetch(cacheKey) {
+            prefetchQueue = prefetchQueue.filter(request => request.cacheKey !== cacheKey);
+        }
+
+        function processPrefetchQueue() {
+            if (sliceRequestInFlight || prefetchRequestInFlight) {
+                return;
+            }
+
+            while (prefetchQueue.length > 0) {
+                const nextRequest = prefetchQueue.shift();
+                if (!nextRequest || sliceCache.has(nextRequest.cacheKey) || inFlightPrefetchKeys.has(nextRequest.cacheKey)) {
+                    continue;
+                }
+
+                sendPrefetchRequest(nextRequest);
+                return;
+            }
+        }
+
+        function sendPrefetchRequest(request) {
+            const requestId = nextSliceRequestId++;
+            activePrefetchRequest = { ...request, priority: 'prefetch', requestId };
+            prefetchRequestInFlight = true;
+            inFlightPrefetchKeys.add(activePrefetchRequest.cacheKey);
+
+            vscode.postMessage({
+                type: '${CONSTANTS.MESSAGE_TYPES.READ_SLICE}',
+                ...activePrefetchRequest
+            });
+        }
+
+        function handlePrefetchSliceData(data) {
+            if (data.requestId !== undefined && (!activePrefetchRequest || data.requestId !== activePrefetchRequest.requestId)) {
+                return;
+            }
+
+            const completedRequest = activePrefetchRequest;
+            try {
+                if (completedRequest) {
+                    const receivedData = normalizeReceivedSliceData(data, completedRequest);
+                    cacheSliceData(receivedData);
+                    updateFileSize(data.fileSize);
+                    if (requestMatchesCurrentControls(completedRequest)) {
+                        displaySliceData(receivedData);
+                        hideError();
+                    }
+                }
+            } catch (error) {
+                showError(String(error));
+            } finally {
+                finishPrefetchRequest(completedRequest);
+            }
+        }
+
+        function finishPrefetchRequest(completedRequest) {
+            if (completedRequest) {
+                inFlightPrefetchKeys.delete(completedRequest.cacheKey);
+            }
+
+            prefetchRequestInFlight = false;
+            activePrefetchRequest = null;
+            processPrefetchQueue();
         }
 
         function decodeSliceData(data) {
@@ -1019,11 +1240,11 @@ export class WebviewUIManager {
         }
 
         function handleMetadataChange() {
+            clearSliceCacheAndPrefetch();
             windowMin = null;
             windowMax = null;
             sliceMin = 0;
             sliceMax = 255;
-            pendingSliceRequest = null;
             clearSliceStatistics();
             updateWindowControls();
             updateSliceInfo();
@@ -1084,6 +1305,7 @@ export class WebviewUIManager {
         }
         
         function togglePlane() {
+            clearSliceCacheAndPrefetch();
             currentPlane = currentPlane === 'axial' ? 'coronal' : 'axial';
             togglePlaneButton.textContent = 'Plane: ' + currentPlane.charAt(0).toUpperCase() + currentPlane.slice(1);
 

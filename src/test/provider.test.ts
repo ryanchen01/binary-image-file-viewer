@@ -30,6 +30,19 @@ suite('BinaryImageEditorProvider', () => {
         assert.deepStrictEqual(range, { offset: 200, length: 100 });
     });
 
+    test('slice reader computes coronal slice byte ranges', () => {
+        const reader = new SliceReader();
+        const result = reader.getCoronalSliceRanges(400, 10, 5, 2, 'uint16');
+        assert.strictEqual(result.resultWidth, 10);
+        assert.strictEqual(result.resultHeight, 4);
+        assert.deepStrictEqual(result.ranges, [
+            { offset: 40, length: 20 },
+            { offset: 140, length: 20 },
+            { offset: 240, length: 20 },
+            { offset: 340, length: 20 }
+        ]);
+    });
+
     test('applyWindowLevel maps values into 0-255 range', () => {
         const values = [0, 50, 100, 150];
         const mapped = applyWindowLevel(values, 0, 100);
@@ -108,10 +121,53 @@ suite('BinaryImageEditorProvider', () => {
         assert.ok(!html.includes('computeGlobalWindow'));
     });
 
+    test('generated HTML caches slices and prefetches nearby axial slices', () => {
+        const asAny = provider as any;
+        const html: string = asAny.getHtmlForWebview({} as any);
+
+        assert.ok(html.includes('const sliceCache = new Map();'));
+        assert.ok(/const PREFETCH_RADIUS = \d+;/.test(html));
+        assert.ok(html.includes('const MAX_SLICE_CACHE_ENTRIES = 24;'));
+        assert.ok(html.includes('function enqueueNearbyPrefetchRequests(targetRequest)'));
+        assert.ok(html.includes('targetRequest.slice - PREFETCH_RADIUS'));
+        assert.ok(html.includes('targetRequest.slice + PREFETCH_RADIUS'));
+        assert.ok(html.includes("request.priority = 'visible';"));
+        assert.ok(html.includes("priority: 'prefetch'"));
+    });
+
+    test('generated HTML suppresses duplicate prefetches and clears slice cache on metadata changes', () => {
+        const asAny = provider as any;
+        const html: string = asAny.getHtmlForWebview({} as any);
+
+        assert.ok(html.includes('function isSliceRequestKnown(cacheKey)'));
+        assert.ok(html.includes('sliceCache.has(cacheKey)'));
+        assert.ok(html.includes('inFlightPrefetchKeys.has(cacheKey)'));
+        assert.ok(html.includes('prefetchQueue.some(request => request.cacheKey === cacheKey)'));
+        assert.ok(html.includes('function clearSliceCacheAndPrefetch()'));
+        assert.ok(html.includes('sliceCache.clear();'));
+        assert.ok(html.includes('prefetchQueue = [];'));
+        assert.ok(html.includes('clearSliceCacheAndPrefetch();'));
+    });
+
+    test('generated HTML stores stale prefetch responses without rendering over the active slice', () => {
+        const asAny = provider as any;
+        const html: string = asAny.getHtmlForWebview({} as any);
+        const prefetchHandlerIndex = html.indexOf('function handlePrefetchSliceData(data)');
+        const cacheIndex = html.indexOf('cacheSliceData(receivedData);', prefetchHandlerIndex);
+        const matchIndex = html.indexOf('if (requestMatchesCurrentControls(completedRequest))', cacheIndex);
+        const renderIndex = html.indexOf('displaySliceData(receivedData);', matchIndex);
+
+        assert.ok(prefetchHandlerIndex >= 0);
+        assert.ok(cacheIndex > prefetchHandlerIndex);
+        assert.ok(matchIndex > cacheIndex);
+        assert.ok(renderIndex > matchIndex);
+    });
+
     test('generated HTML preserves window values across slice changes and only clips slider positions to the new slice range', () => {
         const asAny = provider as any;
         const html: string = asAny.getHtmlForWebview({} as any);
-        const updateIndex = html.indexOf('updateSliceRange(currentSliceData);');
+        const displayIndex = html.indexOf('function displaySliceData(data)');
+        const updateIndex = html.indexOf('updateSliceRange(currentSliceData);', displayIndex);
         const renderIndex = html.indexOf('renderSlice(currentSliceData);', updateIndex);
         const resetIndex = html.indexOf('resetWindowToSliceRange();', updateIndex);
         assert.ok(updateIndex >= 0);

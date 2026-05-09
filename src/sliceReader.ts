@@ -90,6 +90,46 @@ export class SliceReader {
     }
 
     /**
+     * Calculate byte ranges for a coronal slice without loading the whole file.
+     */
+    public getCoronalSliceRanges(
+        fileSize: number,
+        width: number,
+        height: number,
+        slice: number,
+        dataType: SupportedDataType
+    ): { ranges: Array<{ offset: number; length: number }>; resultWidth: number; resultHeight: number } {
+        validateMetadata(width, height, dataType);
+
+        if (slice < 0) {
+            throw new Error('Slice index must be non-negative');
+        }
+
+        if (slice >= height) {
+            throw new Error('Slice extends beyond image height');
+        }
+
+        const bytesPerPixel = getBytesPerPixel(dataType);
+        const rowBytes = width * bytesPerPixel;
+        const axialSliceSize = width * height * bytesPerPixel;
+        const depth = Math.floor(fileSize / axialSliceSize);
+        const ranges: Array<{ offset: number; length: number }> = [];
+
+        for (let z = 0; z < depth; z++) {
+            ranges.push({
+                offset: z * axialSliceSize + slice * rowBytes,
+                length: rowBytes
+            });
+        }
+
+        return {
+            ranges,
+            resultWidth: width,
+            resultHeight: depth
+        };
+    }
+
+    /**
      * Calculate how many slices are available based on file size and metadata
      */
     public calculateMaxSlices(
