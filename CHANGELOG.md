@@ -4,6 +4,10 @@ All notable changes to the "binary-image-file-viewer" extension are documented h
 
 This project adheres to Keep a Changelog and Semantic Versioning.
 
+## [0.8.0] - 2026-05-19
+### Added
+- MHD file support with custom editor and commands
+
 ## [0.7.1] - 2026-05-09
 ### Added
 - Added an in-webview slice cache with nearby axial slice prefetching for smoother navigation.
