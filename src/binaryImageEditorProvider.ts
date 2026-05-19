@@ -1,9 +1,16 @@
 import * as vscode from 'vscode';
-import { CONSTANTS, SupportedDataType } from './constants';
+import { CONSTANTS, SupportedDataType, ViewType } from './constants';
 import { FileCacheManager } from './fileCacheManager';
 import { DataProcessor } from './dataProcessor';
 import { SliceReader } from './sliceReader';
 import { WebviewUIManager } from './webviewUIManager';
+import { MhdMetadata, parseMhdHeader, resolveMhdDataFilePath } from './mhdParser';
+
+interface BinaryImageDocument extends vscode.CustomDocument {
+    readonly sourceUri: vscode.Uri;
+    readonly dataUri: vscode.Uri;
+    readonly metadata?: MhdMetadata;
+}
 
 /**
  * Custom editor provider responsible for rendering binary image files in a
@@ -29,10 +36,10 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
      * @param context Extension context used to create the provider.
      * @returns Disposable that unregisters the provider.
      */
-    public static register(context: vscode.ExtensionContext): vscode.Disposable {
+    public static register(context: vscode.ExtensionContext, viewType: ViewType = CONSTANTS.VIEW_TYPES.BINARY_EDITOR): vscode.Disposable {
         const provider = new BinaryImageEditorProvider(context);
         const providerRegistration = vscode.window.registerCustomEditorProvider(
-            'binaryImageViewer.editor',
+            viewType,
             provider
         );
         return providerRegistration;
@@ -46,9 +53,17 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
         uri: vscode.Uri,
         _openContext: vscode.CustomDocumentOpenContext,
         _token: vscode.CancellationToken
-    ): Promise<vscode.CustomDocument> {
+    ): Promise<BinaryImageDocument> {
+        const metadata = await this.readMhdMetadata(uri);
+        const dataUri = metadata
+            ? vscode.Uri.file(resolveMhdDataFilePath(uri.fsPath, metadata.elementDataFile))
+            : uri;
+
         return {
             uri,
+            sourceUri: uri,
+            dataUri,
+            metadata,
             dispose: () => {}
         };
     }
@@ -62,6 +77,8 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
         webviewPanel: vscode.WebviewPanel,
         _token: vscode.CancellationToken
     ): Promise<void> {
+        const binaryImageDocument = document as BinaryImageDocument;
+
         // Configure webview
         webviewPanel.webview.options = {
             enableScripts: true,
@@ -76,13 +93,13 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
                 switch (message.type) {
                     case CONSTANTS.MESSAGE_TYPES.READY:
                         // Send initial file data when webview is ready
-                        await this.sendFileData(webviewPanel.webview, document.uri);
+                        await this.sendFileData(webviewPanel.webview, binaryImageDocument);
                         break;
                     case CONSTANTS.MESSAGE_TYPES.READ_SLICE:
                         // Read a specific slice from the file
                         await this.readSlice(
                             webviewPanel.webview,
-                            document.uri,
+                            binaryImageDocument.dataUri,
                             message.width,
                             message.height,
                             message.slice,
@@ -98,7 +115,7 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
                         // Compute global min/max for the entire image
                         try {
                             const { windowMin, windowMax } = await this.computeGlobalWindow(
-                                document.uri,
+                                binaryImageDocument.dataUri,
                                 message.width,
                                 message.height,
                                 message.dataType,
@@ -125,7 +142,8 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
 
         // Clean up cache when panel is disposed
         webviewPanel.onDidDispose(() => {
-            this.fileCacheManager.evictFile(document.uri);
+            this.fileCacheManager.evictFile(binaryImageDocument.sourceUri);
+            this.fileCacheManager.evictFile(binaryImageDocument.dataUri);
         });
     }
 
@@ -133,12 +151,19 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
      * Send basic file information to the webview so that the UI can display
      * file metadata before any slice data is requested.
      */
-    private async sendFileData(webview: vscode.Webview, uri: vscode.Uri): Promise<void> {
+    private async sendFileData(webview: vscode.Webview, document: BinaryImageDocument): Promise<void> {
         try {
-            const stats = await this.fileCacheManager.getFileStats(uri);
+            const stats = await this.fileCacheManager.getFileStats(document.dataUri);
             webview.postMessage({
                 type: CONSTANTS.MESSAGE_TYPES.FILE_INFO,
-                fileSize: stats.size
+                fileSize: stats.size,
+                width: document.metadata?.width,
+                height: document.metadata?.height,
+                depth: document.metadata?.depth,
+                dataType: document.metadata?.dataType,
+                endianness: document.metadata?.endianness,
+                sourceFile: document.dataUri.fsPath,
+                metadataFile: document.metadata ? document.sourceUri.fsPath : undefined
             });
         } catch (error) {
             webview.postMessage({
@@ -242,6 +267,23 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
      */
     private async getFileData(uri: vscode.Uri): Promise<Uint8Array> {
         return this.fileCacheManager.getFileData(uri);
+    }
+
+    private async readMhdMetadata(uri: vscode.Uri): Promise<MhdMetadata | undefined> {
+        if (!uri.fsPath.toLowerCase().endsWith('.mhd')) {
+            return undefined;
+        }
+
+        if (uri.scheme && uri.scheme !== 'file') {
+            throw new Error('MHD files must be opened from the local file system');
+        }
+
+        try {
+            const headerData = await vscode.workspace.fs.readFile(uri);
+            return parseMhdHeader(Buffer.from(headerData).toString('utf8'));
+        } catch (err) {
+            throw new Error(`Unable to parse MHD metadata: ${err}`);
+        }
     }
 
     /**

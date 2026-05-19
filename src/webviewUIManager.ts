@@ -529,8 +529,42 @@ export class WebviewUIManager {
         function handleFileInfo(info) {
             fileInfo = info;
             fileSizeEl.textContent = formatBytes(info.fileSize);
+            applyMetadataFromFileInfo(info);
             updateSliceInfo();
             hideError();
+            if (hasImageMetadata(info)) {
+                loadSlice();
+            }
+        }
+
+        function applyMetadataFromFileInfo(info) {
+            if (!hasImageMetadata(info)) {
+                return;
+            }
+
+            widthInput.value = String(info.width);
+            heightInput.value = String(info.height);
+            dataTypeSelect.value = info.dataType;
+            endiannessSelect.value = info.endianness === 'big' ? 'big' : 'little';
+            sliceInput.value = '0';
+            sliceSlider.value = '0';
+            currentPlane = 'axial';
+            togglePlaneButton.textContent = 'Plane: Axial';
+            clearSliceCacheAndPrefetch();
+            windowMin = null;
+            windowMax = null;
+            sliceMin = 0;
+            sliceMax = 255;
+            clearSliceStatistics();
+            updateWindowControls();
+        }
+
+        function hasImageMetadata(info) {
+            return Number.isFinite(info.width) &&
+                Number.isFinite(info.height) &&
+                Number.isFinite(info.depth) &&
+                typeof info.dataType === 'string' &&
+                typeof info.endianness === 'string';
         }
         
         function handleSliceData(data) {
@@ -1264,6 +1298,9 @@ export class WebviewUIManager {
                 if (currentPlane === 'coronal') {
                     maxSlice = Math.max(0, height - 1);
                     numSlices = height;
+                } else if (Number.isFinite(fileInfo.depth) && fileInfo.depth > 0) {
+                    numSlices = fileInfo.depth;
+                    maxSlice = Math.max(0, numSlices - 1);
                 } else {
                     const sliceSize = width * height * bytesPerPixel;
                     numSlices = Math.floor(fileInfo.fileSize / sliceSize);

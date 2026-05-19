@@ -1,6 +1,12 @@
 import * as assert from 'assert';
+import * as fs from 'fs/promises';
+import * as os from 'os';
+import * as path from 'path';
 import * as vscode from 'vscode';
 import { BinaryImageEditorProvider } from '../binaryImageEditorProvider';
+import { CONSTANTS } from '../constants';
+import { openMhdText, openMhdViewer } from '../mhdCommands';
+import { parseMhdHeader, resolveMhdDataFilePath } from '../mhdParser';
 import { SliceReader } from '../sliceReader';
 import { applyWindowLevel, calculateMaxSlices, getBytesPerPixel } from '../utils';
 
@@ -16,6 +22,181 @@ suite('BinaryImageEditorProvider', () => {
         assert.strictEqual(getBytesPerPixel('int32'), 4);
         assert.strictEqual(getBytesPerPixel('float64'), 8);
         assert.strictEqual(getBytesPerPixel('unknown' as any), 4);
+    });
+
+    test('supported extensions include mhd', () => {
+        assert.ok(CONSTANTS.SUPPORTED_EXTENSIONS.includes('.mhd'));
+    });
+
+    test('package contributes mhd as an optional custom editor and keeps raw/bin default viewer separate', async () => {
+        const manifest = await readPackageManifest();
+        const binaryEditor = manifest.contributes.customEditors.find((editor: any) =>
+            editor.viewType === CONSTANTS.VIEW_TYPES.BINARY_EDITOR
+        );
+        const mhdEditor = manifest.contributes.customEditors.find((editor: any) =>
+            editor.viewType === CONSTANTS.VIEW_TYPES.MHD_EDITOR
+        );
+
+        assert.ok(binaryEditor);
+        assert.deepStrictEqual(binaryEditor.selector, [
+            { filenamePattern: '*.raw' },
+            { filenamePattern: '*.bin' }
+        ]);
+        assert.ok(!binaryEditor.selector.some((selector: any) => selector.filenamePattern === '*.mhd'));
+        assert.ok(mhdEditor);
+        assert.deepStrictEqual(mhdEditor.selector, [{ filenamePattern: '*.mhd' }]);
+        assert.strictEqual(mhdEditor.priority, 'option');
+    });
+
+    test('package contributes editor title toggles for mhd text and viewer modes', async () => {
+        const manifest = await readPackageManifest();
+        const editorTitleMenus = manifest.contributes.menus['editor/title'];
+        const openViewerMenu = editorTitleMenus.find((menu: any) =>
+            menu.command === CONSTANTS.COMMANDS.OPEN_MHD_VIEWER
+        );
+        const openTextMenu = editorTitleMenus.find((menu: any) =>
+            menu.command === CONSTANTS.COMMANDS.OPEN_MHD_TEXT
+        );
+
+        assert.ok(openViewerMenu);
+        assert.ok(openViewerMenu.when.includes('resourceExtname == .mhd'));
+        assert.ok(openViewerMenu.when.includes(`activeCustomEditorId != ${CONSTANTS.VIEW_TYPES.MHD_EDITOR}`));
+        assert.strictEqual(openViewerMenu.group, 'navigation');
+        assert.ok(openTextMenu);
+        assert.strictEqual(openTextMenu.when, `activeCustomEditorId == ${CONSTANTS.VIEW_TYPES.MHD_EDITOR}`);
+        assert.strictEqual(openTextMenu.group, 'navigation');
+    });
+
+    test('mhd parser reads the provided 3D float example', () => {
+        const metadata = parseMhdHeader([
+            'ObjectType = Image',
+            'NDims = 3',
+            'BinaryData = True',
+            'BinaryDataByteOrderMSB = False',
+            'CompressedData = False',
+            'TransformMatrix = 1 0 0 0 1 0 0 0 -1',
+            'Offset = -251.053588 -264.249776 -534.000000',
+            'CenterOfRotation = 0 0 0',
+            'AnatomicalOrientation = RAI',
+            'ElementSpacing = 4.000000 4.000000 4.000000',
+            'DimSize = 128 128 128',
+            'ElementType = MET_FLOAT',
+            'ElementDataFile = recon_combined.raw'
+        ].join('\n'));
+
+        assert.deepStrictEqual(metadata, {
+            width: 128,
+            height: 128,
+            depth: 128,
+            dataType: 'float32',
+            endianness: 'little',
+            elementDataFile: 'recon_combined.raw'
+        });
+    });
+
+    test('mhd parser maps byte order, dimensions, and element types', () => {
+        const elementTypes = new Map<string, string>([
+            ['MET_DOUBLE', 'float64'],
+            ['MET_UCHAR', 'uint8'],
+            ['MET_CHAR', 'int8'],
+            ['MET_USHORT', 'uint16'],
+            ['MET_SHORT', 'int16'],
+            ['MET_UINT', 'uint32'],
+            ['MET_INT', 'int32']
+        ]);
+
+        for (const [elementType, dataType] of elementTypes) {
+            const metadata = parseMhdHeader([
+                '# comment',
+                'BinaryData=True',
+                'BinaryDataByteOrderMSB = True',
+                'CompressedData = False',
+                'DimSize = 16 8',
+                `ElementType = ${elementType}`,
+                'ElementDataFile = "image.raw"'
+            ].join('\n'));
+
+            assert.strictEqual(metadata.width, 16);
+            assert.strictEqual(metadata.height, 8);
+            assert.strictEqual(metadata.depth, 1);
+            assert.strictEqual(metadata.dataType, dataType);
+            assert.strictEqual(metadata.endianness, 'big');
+            assert.strictEqual(metadata.elementDataFile, 'image.raw');
+        }
+    });
+
+    test('mhd parser accepts ElementByteOrderMSB as the byte order field', () => {
+        const metadata = parseMhdHeader([
+            'BinaryData = True',
+            'ElementByteOrderMSB = True',
+            'CompressedData = False',
+            'DimSize = 16 8 2',
+            'ElementType = MET_USHORT',
+            'ElementDataFile = image.raw'
+        ].join('\n'));
+
+        assert.strictEqual(metadata.endianness, 'big');
+        assert.strictEqual(metadata.dataType, 'uint16');
+        assert.strictEqual(metadata.depth, 2);
+    });
+
+    test('mhd parser allows quoted data filenames with spaces', () => {
+        const metadata = parseMhdHeader([
+            'BinaryData = True',
+            'BinaryDataByteOrderMSB = False',
+            'CompressedData = False',
+            'DimSize = 16 8',
+            'ElementType = MET_UCHAR',
+            'ElementDataFile = "scan 001.raw"'
+        ].join('\n'));
+
+        assert.strictEqual(metadata.elementDataFile, 'scan 001.raw');
+    });
+
+    test('mhd parser rejects unsupported or incomplete headers', () => {
+        assert.throws(() => parseMhdHeader([
+            'BinaryData = True',
+            'BinaryDataByteOrderMSB = False',
+            'CompressedData = True',
+            'DimSize = 16 16 16',
+            'ElementType = MET_FLOAT',
+            'ElementDataFile = image.raw'
+        ].join('\n')), /CompressedData must be False/);
+
+        assert.throws(() => parseMhdHeader([
+            'BinaryData = True',
+            'BinaryDataByteOrderMSB = False',
+            'CompressedData = False',
+            'DimSize = 16 16 16',
+            'ElementType = MET_FLOAT'
+        ].join('\n')), /missing ElementDataFile/);
+
+        assert.throws(() => parseMhdHeader([
+            'BinaryData = True',
+            'BinaryDataByteOrderMSB = False',
+            'CompressedData = False',
+            'DimSize = 16 16 16',
+            'ElementType = MET_LONG',
+            'ElementDataFile = image.raw'
+        ].join('\n')), /Unsupported MHD ElementType/);
+
+        assert.throws(() => parseMhdHeader([
+            'BinaryData = True',
+            'BinaryDataByteOrderMSB = False',
+            'CompressedData = False',
+            'DimSize = 16 16 16',
+            'ElementType = MET_FLOAT',
+            'ElementDataFile = LIST'
+        ].join('\n')), /Unsupported MHD ElementDataFile/);
+    });
+
+    test('mhd data file resolver keeps data files local to the metadata folder', () => {
+        const metadataPath = path.join('D:', 'images', 'case', 'image.mhd');
+        const dataPath = resolveMhdDataFilePath(metadataPath, 'recon.raw');
+
+        assert.strictEqual(dataPath, path.join('D:', 'images', 'case', 'recon.raw'));
+        assert.throws(() => resolveMhdDataFilePath(metadataPath, '..\\recon.raw'), /outside the MHD folder/);
+        assert.throws(() => resolveMhdDataFilePath(metadataPath, 'file://recon.raw'), /URI values/);
     });
 
     test('calculateMaxSlices computes correct slice count', () => {
@@ -192,6 +373,150 @@ suite('BinaryImageEditorProvider', () => {
         assert.ok(html.includes('clearSliceStatistics();'));
     });
 
+    test('generated HTML applies mhd metadata defaults and auto-loads the first slice', () => {
+        const asAny = provider as any;
+        const html: string = asAny.getHtmlForWebview({} as any);
+        const fileInfoIndex = html.indexOf('function handleFileInfo(info)');
+        const applyIndex = html.indexOf('applyMetadataFromFileInfo(info);', fileInfoIndex);
+        const loadIndex = html.indexOf('loadSlice();', applyIndex);
+
+        assert.ok(html.includes('function applyMetadataFromFileInfo(info)'));
+        assert.ok(html.includes("widthInput.value = String(info.width);"));
+        assert.ok(html.includes("heightInput.value = String(info.height);"));
+        assert.ok(html.includes('dataTypeSelect.value = info.dataType;'));
+        assert.ok(html.includes("endiannessSelect.value = info.endianness === 'big' ? 'big' : 'little';"));
+        assert.ok(html.includes('Number.isFinite(fileInfo.depth) && fileInfo.depth > 0'));
+        assert.ok(applyIndex > fileInfoIndex);
+        assert.ok(loadIndex > applyIndex);
+    });
+
+    test('mhd document resolves data file and sends metadata file info', async () => {
+        const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'binary-image-viewer-'));
+        const metadataPath = path.join(tempDir, 'image.mhd');
+        const dataPath = path.join(tempDir, 'recon_combined.raw');
+        const fileSize = 4 * 4 * 2 * 4;
+        const header = [
+            'BinaryData = True',
+            'BinaryDataByteOrderMSB = False',
+            'CompressedData = False',
+            'DimSize = 4 4 2',
+            'ElementType = MET_FLOAT',
+            'ElementDataFile = recon_combined.raw'
+        ].join('\n');
+
+        try {
+            await fs.writeFile(metadataPath, header);
+            await fs.writeFile(dataPath, Buffer.alloc(fileSize));
+
+            const localProvider = new BinaryImageEditorProvider(context);
+            const doc = await localProvider.openCustomDocument(vscode.Uri.file(metadataPath), {} as any, {} as any);
+            const resolvedDataPath = (doc as any).dataUri.fsPath;
+            const resolvedMetadataPath = (doc as any).sourceUri.fsPath;
+            assert.strictEqual(resolvedDataPath.toLowerCase(), dataPath.toLowerCase());
+
+            const messages: any[] = [];
+            await (localProvider as any).sendFileData({ postMessage: (message: any) => messages.push(message) }, doc);
+
+            assert.deepStrictEqual(messages[0], {
+                type: 'fileInfo',
+                fileSize,
+                width: 4,
+                height: 4,
+                depth: 2,
+                dataType: 'float32',
+                endianness: 'little',
+                sourceFile: resolvedDataPath,
+                metadataFile: resolvedMetadataPath
+            });
+        } finally {
+            await fs.rm(tempDir, { recursive: true, force: true });
+        }
+    });
+
+    test('open mhd viewer command switches the active mhd to the viewer custom editor', async () => {
+        const calls: any[][] = [];
+        const errors: string[] = [];
+        const uri = vscode.Uri.file(path.join('D:', 'images', 'case', 'image.mhd'));
+
+        await openMhdViewer(uri, {
+            executeCommand: async (command: string, ...args: unknown[]) => {
+                calls.push([command, ...args]);
+            },
+            showErrorMessage: async (message: string) => {
+                errors.push(message);
+            }
+        });
+
+        assert.deepStrictEqual(errors, []);
+        assert.strictEqual(calls.length, 1);
+        assert.strictEqual(calls[0][0], 'vscode.openWith');
+        assert.strictEqual((calls[0][1] as vscode.Uri).fsPath, uri.fsPath);
+        assert.strictEqual(calls[0][2], CONSTANTS.VIEW_TYPES.MHD_EDITOR);
+        assert.deepStrictEqual(calls[0][3], {
+            viewColumn: vscode.ViewColumn.Active,
+            preview: false
+        });
+    });
+
+    test('open mhd viewer command ignores extra toolbar arguments', async () => {
+        const calls: any[][] = [];
+        const errors: string[] = [];
+        const uri = vscode.Uri.file(path.join('D:', 'images', 'case', 'image.mhd'));
+
+        await openMhdViewer(uri, [uri], {
+            executeCommand: async (command: string, ...args: unknown[]) => {
+                calls.push([command, ...args]);
+            },
+            showErrorMessage: async (message: string) => {
+                errors.push(message);
+            }
+        });
+
+        assert.deepStrictEqual(errors, []);
+        assert.strictEqual(calls.length, 1);
+        assert.strictEqual(calls[0][0], 'vscode.openWith');
+        assert.strictEqual(calls[0][2], CONSTANTS.VIEW_TYPES.MHD_EDITOR);
+    });
+
+    test('open mhd text command switches the active mhd back to the default text editor', async () => {
+        const calls: any[][] = [];
+        const uri = vscode.Uri.file(path.join('D:', 'images', 'case', 'image.mhd'));
+
+        await openMhdText(uri, {
+            executeCommand: async (command: string, ...args: unknown[]) => {
+                calls.push([command, ...args]);
+            },
+            showErrorMessage: async () => undefined
+        });
+
+        assert.strictEqual(calls.length, 1);
+        assert.strictEqual(calls[0][0], 'vscode.openWith');
+        assert.strictEqual((calls[0][1] as vscode.Uri).fsPath, uri.fsPath);
+        assert.strictEqual(calls[0][2], 'default');
+        assert.deepStrictEqual(calls[0][3], {
+            viewColumn: vscode.ViewColumn.Active,
+            preview: false
+        });
+    });
+
+    test('mhd toggle commands reject non-mhd targets', async () => {
+        const calls: any[][] = [];
+        const errors: string[] = [];
+        const uri = vscode.Uri.file(path.join('D:', 'images', 'case', 'image.raw'));
+
+        await openMhdViewer(uri, {
+            executeCommand: async (command: string, ...args: unknown[]) => {
+                calls.push([command, ...args]);
+            },
+            showErrorMessage: async (message: string) => {
+                errors.push(message);
+            }
+        });
+
+        assert.deepStrictEqual(calls, []);
+        assert.deepStrictEqual(errors, ['Open an MHD file before switching the MHD viewer.']);
+    });
+
     test('openCustomDocument returns a document with the same URI', async () => {
         const uri = vscode.Uri.file('/tmp/test.raw');
         const doc = await provider.openCustomDocument(uri, {} as any, {} as any);
@@ -199,3 +524,7 @@ suite('BinaryImageEditorProvider', () => {
         assert.ok(typeof doc.dispose === 'function');
     });
 });
+
+async function readPackageManifest(): Promise<any> {
+    return JSON.parse(await fs.readFile(path.resolve(__dirname, '..', '..', 'package.json'), 'utf8'));
+}

@@ -2,6 +2,8 @@
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from 'vscode';
 import { BinaryImageEditorProvider } from './binaryImageEditorProvider';
+import { CONSTANTS } from './constants';
+import { openMhdText, openMhdViewer } from './mhdCommands';
 
 /**
  * Called when the extension is activated. This happens the first time the
@@ -19,7 +21,17 @@ export function activate(context: vscode.ExtensionContext) {
 	// Register the custom editor provider
 	const provider = new BinaryImageEditorProvider(context);
 	const providerRegistration = vscode.window.registerCustomEditorProvider(
-		'binaryImageViewer.editor',
+		CONSTANTS.VIEW_TYPES.BINARY_EDITOR,
+		provider,
+		{
+			webviewOptions: {
+				retainContextWhenHidden: true,
+			},
+			supportsMultipleEditorsPerDocument: false,
+		}
+	);
+	const mhdProviderRegistration = vscode.window.registerCustomEditorProvider(
+		CONSTANTS.VIEW_TYPES.MHD_EDITOR,
 		provider,
 		{
 			webviewOptions: {
@@ -32,13 +44,21 @@ export function activate(context: vscode.ExtensionContext) {
 	// The command has been defined in the package.json file
 	// Now provide the implementation of the command with registerCommand
 	// The commandId parameter must match the command field in package.json
-	const disposable = vscode.commands.registerCommand('binary-image-file-viewer.helloWorld', () => {
+	const disposable = vscode.commands.registerCommand(CONSTANTS.COMMANDS.HELLO_WORLD, () => {
 		// The code you place here will be executed every time your command is executed
 		// Display a message box to the user
 		vscode.window.showInformationMessage('Hello World from Binary Image File Viewer!');
 	});
+	const openMhdViewerCommand = vscode.commands.registerCommand(CONSTANTS.COMMANDS.OPEN_MHD_VIEWER, openMhdViewer);
+	const openMhdTextCommand = vscode.commands.registerCommand(CONSTANTS.COMMANDS.OPEN_MHD_TEXT, openMhdText);
 
-	context.subscriptions.push(providerRegistration, disposable);
+	context.subscriptions.push(
+		providerRegistration,
+		mhdProviderRegistration,
+		disposable,
+		openMhdViewerCommand,
+		openMhdTextCommand
+	);
 }
 
 /**

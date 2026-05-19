@@ -27,11 +27,25 @@ export const CONSTANTS = {
         WINDOW_DATA: 'windowData',
         ERROR: 'error'
     } as const,
+
+    // Custom editor view types
+    VIEW_TYPES: {
+        BINARY_EDITOR: 'binaryImageViewer.editor',
+        MHD_EDITOR: 'binaryImageViewer.mhdEditor'
+    } as const,
+
+    // Commands
+    COMMANDS: {
+        HELLO_WORLD: 'binary-image-file-viewer.helloWorld',
+        OPEN_MHD_VIEWER: 'binary-image-file-viewer.openMhdViewer',
+        OPEN_MHD_TEXT: 'binary-image-file-viewer.openMhdText'
+    } as const,
     
     // File extensions
-    SUPPORTED_EXTENSIONS: ['.raw', '.bin'] as const
+    SUPPORTED_EXTENSIONS: ['.raw', '.bin', '.mhd'] as const
 } as const;
 
 export type SupportedDataType = typeof CONSTANTS.SUPPORTED_DATA_TYPES[number];
 export type MessageTypes = typeof CONSTANTS.MESSAGE_TYPES[keyof typeof CONSTANTS.MESSAGE_TYPES];
 export type SupportedExtension = typeof CONSTANTS.SUPPORTED_EXTENSIONS[number];
+export type ViewType = typeof CONSTANTS.VIEW_TYPES[keyof typeof CONSTANTS.VIEW_TYPES];
