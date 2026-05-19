@@ -8,7 +8,7 @@
     "url": "https://github.com/ryanchen01/binary-image-file-viewer"
   },
   "publisher": "ryanchen01",
-  "version": "0.7.1",
+  "version": "0.8.0",
   "engines": {
     "vscode": "^1.45.0"
   },
