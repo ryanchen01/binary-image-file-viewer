@@ -4,6 +4,15 @@ All notable changes to the "binary-image-file-viewer" extension are documented h
 
 This project adheres to Keep a Changelog and Semantic Versioning.
 
+## [0.10.0] - 2026-10-09
+
+### Changed
+
+- Moved pixel conversion and slice statistics to a local web worker while keeping window/level preview live during dragging.
+- Added a configurable 64 MiB slice-cache budget, memory-aware nearest-slice prefetching, and cancellation of obsolete reads and renders.
+- Limited coronal reads to four concurrent row reads and preserved row order and partial-read handling.
+- Run the extension in the workspace host for Remote SSH and send slice bytes as binary messages. Requires VS Code 1.57 or newer.
+
 ## [0.9.1]
 
 ### Changed

@@ -1,4 +1,5 @@
 import { CONSTANTS } from './constants';
+import { RENDER_WORKER_SOURCE } from './renderWorker';
 
 /**
  * Handles HTML generation and webview communication
@@ -8,7 +9,7 @@ export class WebviewUIManager {
     /**
      * Generate the HTML used for the webview panel
      */
-    public getHtmlForWebview(): string {
+    public getHtmlForWebview(cacheBudgetBytes: number = CONSTANTS.SLICE_CACHE_MEMORY_MB * 1024 * 1024): string {
         return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -465,6 +466,17 @@ export class WebviewUIManager {
         const inFlightPrefetchKeys = new Set();
         const PREFETCH_RADIUS = 5;
         const MAX_SLICE_CACHE_ENTRIES = 24;
+        const MAX_SLICE_CACHE_BYTES = ${cacheBudgetBytes};
+        let sliceCacheBytes = 0;
+        let renderWorker = null;
+        let workerSliceData = null;
+        let activeRender = null;
+        let pendingRender = null;
+        let renderAnimationFrame = null;
+        let renderEpoch = 0;
+        let nextRenderId = 1;
+        let recycledPixels = null;
+        const renderWorkerSource = ${JSON.stringify(RENDER_WORKER_SOURCE)};
         
         // DOM elements
         const widthInput = document.getElementById('width');
@@ -527,6 +539,11 @@ export class WebviewUIManager {
             const resizeObserver = new ResizeObserver(scheduleCanvasScale);
             resizeObserver.observe(canvas.parentElement);
         }
+        window.addEventListener('pagehide', () => {
+            if (renderWorker) { renderWorker.revokeUrl(); renderWorker.terminate(); }
+            cancelRead(activeSliceRequest);
+            cancelRead(activePrefetchRequest);
+        });
         
         // Message handling
         window.addEventListener('message', event => {
@@ -608,6 +625,10 @@ export class WebviewUIManager {
 
             const completedRequest = activeSliceRequest;
             try {
+                if (!completedRequest || completedRequest.cancelRequested ||
+                    !requestMatchesCurrentControls(completedRequest)) {
+                    return;
+                }
                 const receivedData = normalizeReceivedSliceData(data, completedRequest);
                 cacheSliceData(receivedData);
                 updateFileSize(data.fileSize);
@@ -641,11 +662,22 @@ export class WebviewUIManager {
                 return;
             }
 
+            pendingSliceRequest = null;
+            if (activeSliceRequest && !isSameSliceRequest(activeSliceRequest, request)) {
+                cancelRead(activeSliceRequest);
+            }
+            if (activePrefetchRequest && activePrefetchRequest.cacheKey !== request.cacheKey) {
+                cancelRead(activePrefetchRequest);
+            }
+            if (!currentSliceData || currentSliceData.cacheKey !== request.cacheKey) {
+                invalidateRender();
+            }
+
             const cachedSlice = forceReload ? null : getCachedSlice(request.cacheKey);
             if (cachedSlice) {
                 displaySliceData(cachedSlice);
                 hideError();
-            } else if (activePrefetchRequest && activePrefetchRequest.cacheKey === request.cacheKey) {
+            } else if (activePrefetchRequest && !activePrefetchRequest.cancelRequested && activePrefetchRequest.cacheKey === request.cacheKey) {
                 // The prefetch response will render if this slice is still current.
             } else {
                 removeQueuedPrefetch(request.cacheKey);
@@ -662,7 +694,8 @@ export class WebviewUIManager {
             const dataType = dataTypeSelect.value;
             const endianness = endiannessSelect.value === 'little';
             
-            if (width <= 0 || height <= 0 || slice < 0) {
+            if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) ||
+                !Number.isSafeInteger(slice) || width <= 0 || height <= 0 || slice < 0) {
                 showError('Please enter valid positive values for width, height, and slice.');
                 return;
             }
@@ -730,7 +763,12 @@ export class WebviewUIManager {
             const nextRequest = pendingSliceRequest;
             pendingSliceRequest = null;
 
-            if (!completedRequest || !isSameSliceRequest(nextRequest, completedRequest)) {
+            if (!requestMatchesCurrentControls(nextRequest) || sliceCache.has(nextRequest.cacheKey)) {
+                processPrefetchQueue();
+                return;
+            }
+
+            if (!completedRequest || completedRequest.cancelRequested || !isSameSliceRequest(nextRequest, completedRequest)) {
                 sendSliceRequest(nextRequest);
                 return;
             }
@@ -763,16 +801,32 @@ export class WebviewUIManager {
                 }
 
                 const completedRequest = activePrefetchRequest;
-                if (completedRequest && requestMatchesCurrentControls(completedRequest)) {
+                if (!message.cancelled && completedRequest && !completedRequest.cancelRequested && requestMatchesCurrentControls(completedRequest)) {
                     showError(message.message);
                 }
                 finishPrefetchRequest(completedRequest);
                 return;
             }
 
-            showError(message.message);
-            if (message.requestId !== undefined && activeSliceRequest && message.requestId === activeSliceRequest.requestId) {
-                finishSliceRequest(null);
+            if (message.requestId !== undefined) {
+                if (!activeSliceRequest || message.requestId !== activeSliceRequest.requestId) {
+                    return;
+                }
+                const completedRequest = activeSliceRequest;
+                if (!message.cancelled && !completedRequest.cancelRequested && requestMatchesCurrentControls(completedRequest)) {
+                    showError(message.message);
+                }
+                finishSliceRequest(completedRequest);
+            } else {
+                showError(message.message);
+            }
+        }
+
+        function cancelRead(request) {
+            if (request && !request.cancelRequested) {
+                request.cancelRequested = true;
+                if (request.priority === 'prefetch') { inFlightPrefetchKeys.delete(request.cacheKey); }
+                vscode.postMessage({ type: '${CONSTANTS.MESSAGE_TYPES.CANCEL_SLICE}', requestId: request.requestId });
             }
         }
         
@@ -865,17 +919,32 @@ export class WebviewUIManager {
                 data.cacheKey = buildSliceCacheKey(data);
             }
 
-            sliceCache.delete(data.cacheKey);
+            evictCachedSlice(data.cacheKey);
+            if (data.rawData.byteLength > MAX_SLICE_CACHE_BYTES) {
+                return;
+            }
             sliceCache.set(data.cacheKey, data);
+            sliceCacheBytes += data.rawData.byteLength;
 
-            while (sliceCache.size > MAX_SLICE_CACHE_ENTRIES) {
+            while (sliceCache.size > MAX_SLICE_CACHE_ENTRIES || sliceCacheBytes > MAX_SLICE_CACHE_BYTES) {
                 const oldestKey = sliceCache.keys().next().value;
-                sliceCache.delete(oldestKey);
+                evictCachedSlice(oldestKey);
+            }
+        }
+
+        function evictCachedSlice(cacheKey) {
+            const data = sliceCache.get(cacheKey);
+            if (data) {
+                sliceCacheBytes -= data.rawData.byteLength;
+                sliceCache.delete(cacheKey);
             }
         }
 
         function clearSliceCacheAndPrefetch() {
+            cancelRead(activeSliceRequest);
+            cancelRead(activePrefetchRequest);
             sliceCache.clear();
+            sliceCacheBytes = 0;
             prefetchQueue = [];
             inFlightPrefetchKeys.clear();
             activePrefetchRequest = null;
@@ -883,6 +952,12 @@ export class WebviewUIManager {
             activeSliceRequest = null;
             pendingSliceRequest = null;
             sliceRequestInFlight = false;
+            currentSliceData = null;
+            pixelInspection = null;
+            invalidateRender();
+            workerSliceData = null;
+            recycledPixels = null;
+            if (renderWorker) { renderWorker.postMessage({ type: 'clear' }); }
         }
 
         function normalizeReceivedSliceData(data, request) {
@@ -911,6 +986,7 @@ export class WebviewUIManager {
         }
 
         function enqueueNearbyPrefetchRequests(targetRequest) {
+            prefetchQueue = [];
             if (targetRequest.plane !== 'axial' || targetRequest.forceReload) {
                 return;
             }
@@ -920,10 +996,17 @@ export class WebviewUIManager {
                 return;
             }
 
-            const minSlice = Math.max(0, targetRequest.slice - PREFETCH_RADIUS);
-            const lastSlice = Math.min(maxSlice, targetRequest.slice + PREFETCH_RADIUS);
+            const sliceBytes = targetRequest.width * targetRequest.height * getBytesPerPixel(targetRequest.dataType);
+            const radius = Math.min(PREFETCH_RADIUS, Math.max(0, Math.floor((MAX_SLICE_CACHE_BYTES / sliceBytes - 1) / 2)));
+            const minSlice = Math.max(0, targetRequest.slice - radius);
+            const lastSlice = Math.min(maxSlice, targetRequest.slice + radius);
 
-            for (let slice = minSlice; slice <= lastSlice; slice++) {
+            const neighbors = [];
+            for (let distance = 1; distance <= radius; distance++) {
+                neighbors.push(targetRequest.slice + distance, targetRequest.slice - distance);
+            }
+            for (const slice of neighbors) {
+                if (slice < minSlice || slice > lastSlice) { continue; }
                 if (slice === targetRequest.slice) {
                     continue;
                 }
@@ -942,8 +1025,8 @@ export class WebviewUIManager {
         function isSliceRequestKnown(cacheKey) {
             return sliceCache.has(cacheKey) ||
                 inFlightPrefetchKeys.has(cacheKey) ||
-                (activePrefetchRequest && activePrefetchRequest.cacheKey === cacheKey) ||
-                (activeSliceRequest && activeSliceRequest.cacheKey === cacheKey) ||
+                (activePrefetchRequest && !activePrefetchRequest.cancelRequested && activePrefetchRequest.cacheKey === cacheKey) ||
+                (activeSliceRequest && !activeSliceRequest.cancelRequested && activeSliceRequest.cacheKey === cacheKey) ||
                 (pendingSliceRequest && pendingSliceRequest.cacheKey === cacheKey) ||
                 prefetchQueue.some(request => request.cacheKey === cacheKey);
         }
@@ -988,6 +1071,12 @@ export class WebviewUIManager {
             const completedRequest = activePrefetchRequest;
             try {
                 if (completedRequest) {
+                    const current = buildSliceRequest(false, 'visible');
+                    if (completedRequest.cancelRequested || !current ||
+                        !isSameSliceRequest({ ...completedRequest, slice: current.slice }, current) ||
+                        Math.abs(completedRequest.slice - current.slice) > PREFETCH_RADIUS) {
+                        return;
+                    }
                     const receivedData = normalizeReceivedSliceData(data, completedRequest);
                     cacheSliceData(receivedData);
                     updateFileSize(data.fileSize);
@@ -1102,36 +1191,7 @@ export class WebviewUIManager {
         }
 
         function computeSliceStatistics(data) {
-            const { width, height, dataType } = data;
-            const rawData = decodeSliceData(data);
-            const endianness = endiannessSelect.value === 'little';
-            const { bytesPerPixel, getValue } = createPixelReader(rawData, dataType, endianness);
-            const numPixels = Math.min(width * height, Math.floor(rawData.byteLength / bytesPerPixel));
-
-            if (numPixels <= 0) {
-                return null;
-            }
-
-            let min = getValue(0);
-            let max = min;
-            let sum = min;
-            for (let i = 1; i < numPixels; i++) {
-                const value = getValue(i * bytesPerPixel);
-                if (value < min) {
-                    min = value;
-                }
-                if (value > max) {
-                    max = value;
-                }
-                sum += value;
-            }
-
-            return {
-                min,
-                max,
-                mean: sum / numPixels,
-                sum
-            };
+            return data.statistics || null;
         }
 
         function updateSliceStatisticsDisplay(statistics) {
@@ -1163,42 +1223,142 @@ export class WebviewUIManager {
         }
         
         function renderSlice(data) {
-            const { width, height, dataType } = data;
-            const rawData = decodeSliceData(data);
-            const endianness = endiannessSelect.value === 'little';
+            pendingRender = { data, windowMin, windowMax, epoch: renderEpoch };
+            scheduleRender();
+        }
 
-            canvas.width = width;
-            canvas.height = height;
-
-            const imageData = ctx.createImageData(width, height);
-            const pixels = imageData.data;
-            const { bytesPerPixel, getValue } = createPixelReader(rawData, dataType, endianness);
-
-            if (windowMin === null || windowMax === null) {
-                updateSliceRange(data);
-                resetWindowToSliceRange();
+        function scheduleRender() {
+            if (!pendingRender || activeRender || renderAnimationFrame !== null) {
+                return;
             }
+            renderAnimationFrame = requestAnimationFrame(() => {
+                renderAnimationFrame = null;
+                if (!pendingRender || activeRender) { return; }
+                try {
+                    ensureRenderWorker();
+                    const request = pendingRender;
+                    pendingRender = null;
+                    request.renderId = nextRenderId++;
+                    activeRender = request;
+                    const data = request.data;
+                    const message = {
+                        renderId: request.renderId,
+                        windowMin: request.windowMin,
+                        windowMax: request.windowMax,
+                        pixels: recycledPixels
+                    };
+                    if (workerSliceData !== data) {
+                        message.slice = {
+                            width: data.width, height: data.height, dataType: data.dataType,
+                            endianness: data.endianness !== undefined ? data.endianness : endiannessSelect.value === 'little',
+                            rawData: decodeSliceData(data), statistics: data.statistics
+                        };
+                        // Clone once per displayed slice. Never detach the hover/cache data.
+                        workerSliceData = data;
+                    }
+                    const transfers = recycledPixels ? [recycledPixels] : [];
+                    recycledPixels = null;
+                    renderWorker.postMessage(message, transfers);
+                } catch (error) {
+                    failRenderer(String(error));
+                }
+            });
+        }
 
-            const range = windowMax - windowMin || 1;
-            const numPixels = width * height;
-            for (let i = 0; i < numPixels; i++) {
-                const value = getValue(i * bytesPerPixel);
-                let normalized = (value - windowMin) / range;
-                if (normalized < 0) normalized = 0;
-                else if (normalized > 1) normalized = 1;
-                const grayscale = Math.round(normalized * 255);
-
-                const pixelIndex = i * 4;
-                pixels[pixelIndex] = grayscale;
-                pixels[pixelIndex + 1] = grayscale;
-                pixels[pixelIndex + 2] = grayscale;
-                pixels[pixelIndex + 3] = 255;
+        function ensureRenderWorker() {
+            if (renderWorker) { return; }
+            const url = URL.createObjectURL(new Blob([renderWorkerSource], { type: 'application/javascript' }));
+            let revoked = false;
+            const revoke = () => {
+                if (!revoked) { URL.revokeObjectURL(url); revoked = true; }
+            };
+            try {
+                const worker = new Worker(url);
+                renderWorker = worker;
+                worker.onmessage = event => {
+                    revoke();
+                    if (renderWorker !== worker) { return; }
+                    finishRender(event.data);
+                };
+                worker.onerror = event => {
+                    revoke();
+                    if (renderWorker !== worker) { return; }
+                    failRenderer(event.message || 'Unable to start image renderer');
+                };
+                worker.onmessageerror = () => {
+                    revoke();
+                    if (renderWorker === worker) { failRenderer('Unable to receive rendered image'); }
+                };
+                worker.revokeUrl = revoke;
+            } catch (error) {
+                revoke();
+                throw error;
             }
+        }
 
-            ctx.putImageData(imageData, 0, 0);
-            // Reuse the reader that rendered the image so inspection matches its byte order.
-            pixelInspection = { width, height, rawData, bytesPerPixel, getValue };
-            scaleCanvasToFit();
+        function finishRender(result) {
+            const completed = activeRender;
+            if (!completed || result.renderId !== completed.renderId) { return; }
+            activeRender = null;
+            const isCurrent = completed.epoch === renderEpoch && completed.data === currentSliceData;
+            if (result.type === 'error') {
+                workerSliceData = null;
+                if (isCurrent) { showError(result.message); }
+            } else if (isCurrent) {
+                try {
+                    const data = completed.data;
+                    if (!data.statistics) {
+                        data.statistics = result.statistics;
+                        updateSliceRange(data);
+                    }
+                    if (windowMin === null || windowMax === null) {
+                        resetWindowToSliceRange();
+                    }
+                    if (canvas.width !== result.width) { canvas.width = result.width; }
+                    if (canvas.height !== result.height) { canvas.height = result.height; }
+                    const imageData = new ImageData(new Uint8ClampedArray(result.pixels), result.width, result.height);
+                    ctx.putImageData(imageData, 0, 0);
+                    recycledPixels = result.pixels;
+                    const rawData = decodeSliceData(data);
+                    const endianness = data.endianness !== undefined ? data.endianness : endiannessSelect.value === 'little';
+                    const { bytesPerPixel, getValue } = createPixelReader(rawData, data.dataType, endianness);
+                    pixelInspection = { width: data.width, height: data.height, rawData, bytesPerPixel, getValue };
+                    scaleCanvasToFit();
+                    hideError();
+                } catch (error) {
+                    showError(String(error));
+                }
+            }
+            // Painting intermediate window values keeps dragging live. Only the
+            // newest pending values are rendered next, so the queue cannot grow.
+            scheduleRender();
+        }
+
+        function invalidateRender() {
+            renderEpoch++;
+            pendingRender = null;
+            pixelInspection = null;
+            if (activeRender && renderWorker) {
+                renderWorker.revokeUrl();
+                renderWorker.terminate();
+                renderWorker = null;
+                workerSliceData = null;
+                activeRender = null;
+                recycledPixels = null;
+            }
+        }
+
+        function failRenderer(message) {
+            if (renderWorker) {
+                renderWorker.revokeUrl();
+                renderWorker.terminate();
+            }
+            renderWorker = null;
+            workerSliceData = null;
+            activeRender = null;
+            pendingRender = null;
+            recycledPixels = null;
+            showError('Failed to render slice: ' + message);
         }
 
         function handlePixelHover(event) {
@@ -1336,7 +1496,12 @@ export class WebviewUIManager {
             }
 
             updateSliceRange(currentSliceData);
-            resetWindowToSliceRange();
+            if (currentSliceData.statistics) {
+                resetWindowToSliceRange();
+            } else {
+                windowMin = null;
+                windowMax = null;
+            }
             renderSlice(currentSliceData);
         }
         

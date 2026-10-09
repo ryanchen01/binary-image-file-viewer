@@ -8,9 +8,9 @@
     "url": "https://github.com/ryanchen01/binary-image-file-viewer"
   },
   "publisher": "ryanchen01",
-  "version": "0.9.1",
+  "version": "0.10.0",
   "engines": {
-    "vscode": "^1.45.0"
+    "vscode": "^1.57.0"
   },
   "categories": [
     "Other"
@@ -23,7 +23,20 @@
     "onCommand:binary-image-file-viewer.openMhdText"
   ],
   "main": "./dist/extension.js",
+  "extensionKind": ["workspace"],
   "contributes": {
+    "configuration": {
+      "title": "Binary Image Viewer",
+      "properties": {
+        "binaryImageViewer.sliceCacheMemoryMB": {
+          "type": "number",
+          "default": 64,
+          "minimum": 1,
+          "maximum": 1024,
+          "description": "Maximum decoded slice cache size per editor in MiB. Reopen the viewer to apply changes. The displayed slice and rendering buffers use additional memory."
+        }
+      }
+    },
     "commands": [
       {
         "command": "binary-image-file-viewer.helloWorld",

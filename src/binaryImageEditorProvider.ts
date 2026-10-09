@@ -23,7 +23,7 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
     private sliceReader: SliceReader;
     private webviewUIManager: WebviewUIManager;
 
-    constructor(private readonly context: vscode.ExtensionContext) {
+    constructor(_context: vscode.ExtensionContext) {
         this.fileCacheManager = new FileCacheManager();
         this.dataProcessor = new DataProcessor();
         this.sliceReader = new SliceReader();
@@ -78,6 +78,8 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
         _token: vscode.CancellationToken
     ): Promise<void> {
         const binaryImageDocument = document as BinaryImageDocument;
+        const reads = new Map<number, vscode.CancellationTokenSource>();
+        let disposed = false;
 
         // Configure webview
         webviewPanel.webview.options = {
@@ -88,8 +90,11 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
         webviewPanel.webview.html = this.getHtmlForWebview(webviewPanel.webview);
 
         // Handle messages from the webview
-        webviewPanel.webview.onDidReceiveMessage(
+        const messageSubscription = webviewPanel.webview.onDidReceiveMessage(
             async (message) => {
+                if (disposed) {
+                    return;
+                }
                 switch (message.type) {
                     case CONSTANTS.MESSAGE_TYPES.READY:
                         // Send initial file data when webview is ready
@@ -97,19 +102,30 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
                         break;
                     case CONSTANTS.MESSAGE_TYPES.READ_SLICE:
                         // Read a specific slice from the file
-                        await this.readSlice(
-                            webviewPanel.webview,
-                            binaryImageDocument.dataUri,
-                            message.width,
-                            message.height,
-                            message.slice,
-                            message.dataType,
-                            message.endianness,
-                            message.plane || 'axial',
-                            message.forceReload || false,
-                            message.requestId,
-                            message.priority || 'visible'
-                        );
+                        const cancellation = new vscode.CancellationTokenSource();
+                        reads.set(message.requestId, cancellation);
+                        try {
+                            await this.readSlice(
+                                webviewPanel.webview,
+                                binaryImageDocument.dataUri,
+                                message.width,
+                                message.height,
+                                message.slice,
+                                message.dataType,
+                                message.endianness,
+                                message.plane || 'axial',
+                                message.forceReload || false,
+                                message.requestId,
+                                message.priority || 'visible',
+                                cancellation.token
+                            );
+                        } finally {
+                            reads.delete(message.requestId);
+                            cancellation.dispose();
+                        }
+                        break;
+                    case CONSTANTS.MESSAGE_TYPES.CANCEL_SLICE:
+                        reads.get(message.requestId)?.cancel();
                         break;
                     case CONSTANTS.MESSAGE_TYPES.COMPUTE_GLOBAL_WINDOW:
                         // Compute global min/max for the entire image
@@ -135,13 +151,16 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
                         }
                         break;
                 }
-            },
-            undefined,
-            this.context.subscriptions
+            }
         );
 
         // Clean up cache when panel is disposed
         webviewPanel.onDidDispose(() => {
+            disposed = true;
+            messageSubscription.dispose();
+            for (const read of reads.values()) {
+                read.cancel();
+            }
             this.fileCacheManager.evictFile(binaryImageDocument.sourceUri);
             this.fileCacheManager.evictFile(binaryImageDocument.dataUri);
         });
@@ -196,9 +215,13 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
         plane: string = 'axial',
         forceReload: boolean = false,
         requestId?: number,
-        priority: string = 'visible'
+        priority: string = 'visible',
+        token?: vscode.CancellationToken
     ): Promise<void> {
         try {
+            if (token?.isCancellationRequested) {
+                throw new Error('Slice read cancelled');
+            }
             if (forceReload) {
                 this.fileCacheManager.evictFile(uri);
             }
@@ -215,7 +238,7 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
                 const { offset, length } = this.sliceReader.getAxialSliceRange(
                     stats.size, width, height, slice, typedDataType
                 );
-                sliceData = await this.fileCacheManager.readFileRange(uri, offset, length);
+                sliceData = await this.fileCacheManager.readFileRange(uri, offset, length, token);
                 resultWidth = width;
                 resultHeight = height;
             } else {
@@ -224,22 +247,25 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
                 const { ranges, resultWidth: coronalWidth, resultHeight: coronalHeight } = this.sliceReader.getCoronalSliceRanges(
                     stats.size, width, height, slice, typedDataType
                 );
-                sliceData = await this.fileCacheManager.readFileRanges(uri, ranges);
+                sliceData = await this.fileCacheManager.readFileRanges(uri, ranges, token);
                 resultWidth = coronalWidth;
                 resultHeight = coronalHeight;
             }
 
-            const encodedData = Buffer.from(
-                sliceData.buffer,
-                sliceData.byteOffset,
-                sliceData.byteLength
-            ).toString('base64');
+            if (token?.isCancellationRequested) {
+                throw new Error('Slice read cancelled');
+            }
+            // VS Code 1.57+ transports ArrayBuffers without base64 expansion.
+            // Restrict pooled Buffers to the actual slice's byte range.
+            const data = sliceData.byteOffset === 0 && sliceData.byteLength === sliceData.buffer.byteLength
+                ? sliceData.buffer
+                : sliceData.buffer.slice(sliceData.byteOffset, sliceData.byteOffset + sliceData.byteLength);
 
             // Convert to the appropriate format and send to webview
             webview.postMessage({
                 type: CONSTANTS.MESSAGE_TYPES.SLICE_DATA,
-                data: encodedData,
-                encoding: 'base64',
+                data,
+                encoding: 'binary',
                 byteLength: sliceData.byteLength,
                 width: resultWidth,
                 height: resultHeight,
@@ -255,6 +281,7 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
             webview.postMessage({
                 type: CONSTANTS.MESSAGE_TYPES.ERROR,
                 message: `Failed to read slice: ${error}`,
+                cancelled: token?.isCancellationRequested === true,
                 priority,
                 requestId
             });
@@ -312,6 +339,11 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
      * and scripts required to display and navigate image slices.
      */
     private getHtmlForWebview(_webview: vscode.Webview): string {
-        return this.webviewUIManager.getHtmlForWebview();
+        const memoryMB = vscode.workspace.getConfiguration?.('binaryImageViewer')
+            .get<number>('sliceCacheMemoryMB', CONSTANTS.SLICE_CACHE_MEMORY_MB)
+            ?? CONSTANTS.SLICE_CACHE_MEMORY_MB;
+        const budget = Number.isFinite(memoryMB)
+            ? Math.max(1, Math.min(1024, memoryMB)) : CONSTANTS.SLICE_CACHE_MEMORY_MB;
+        return this.webviewUIManager.getHtmlForWebview(budget * 1024 * 1024);
     }
 }

@@ -1,6 +1,8 @@
 export const CONSTANTS = {
     // File limits
     MAX_FILE_SIZE: 1024 * 1024 * 1024, // 1024 MB cap to prevent OOM
+    SLICE_CACHE_MEMORY_MB: 64,
+    FILE_READ_CONCURRENCY: 4,
     
     // Supported data types
     SUPPORTED_DATA_TYPES: [
@@ -23,6 +25,7 @@ export const CONSTANTS = {
         FILE_INFO: 'fileInfo',
         SLICE_DATA: 'sliceData',
         READ_SLICE: 'readSlice',
+        CANCEL_SLICE: 'cancelSlice',
         COMPUTE_GLOBAL_WINDOW: 'computeGlobalWindow',
         WINDOW_DATA: 'windowData',
         ERROR: 'error'

@@ -191,10 +191,10 @@ suite('BinaryImageEditorProvider', () => {
     });
 
     test('mhd data file resolver keeps data files local to the metadata folder', () => {
-        const metadataPath = path.join('D:', 'images', 'case', 'image.mhd');
+        const metadataPath = path.join(os.tmpdir(), 'images', 'case', 'image.mhd');
         const dataPath = resolveMhdDataFilePath(metadataPath, 'recon.raw');
 
-        assert.strictEqual(dataPath, path.join('D:', 'images', 'case', 'recon.raw'));
+        assert.strictEqual(dataPath, path.join(path.dirname(metadataPath), 'recon.raw'));
         assert.throws(() => resolveMhdDataFilePath(metadataPath, '..\\recon.raw'), /outside the MHD folder/);
         assert.throws(() => resolveMhdDataFilePath(metadataPath, 'file://recon.raw'), /URI values/);
     });
@@ -310,8 +310,8 @@ suite('BinaryImageEditorProvider', () => {
         assert.ok(/const PREFETCH_RADIUS = \d+;/.test(html));
         assert.ok(html.includes('const MAX_SLICE_CACHE_ENTRIES = 24;'));
         assert.ok(html.includes('function enqueueNearbyPrefetchRequests(targetRequest)'));
-        assert.ok(html.includes('targetRequest.slice - PREFETCH_RADIUS'));
-        assert.ok(html.includes('targetRequest.slice + PREFETCH_RADIUS'));
+        assert.ok(html.includes('targetRequest.slice - radius'));
+        assert.ok(html.includes('targetRequest.slice + radius'));
         assert.ok(html.includes("request.priority = 'visible';"));
         assert.ok(html.includes("priority: 'prefetch'"));
     });
@@ -367,8 +367,8 @@ suite('BinaryImageEditorProvider', () => {
         const html: string = asAny.getHtmlForWebview({} as any);
 
         assert.ok(html.includes('function computeSliceStatistics(data)'));
-        assert.ok(html.includes('let sum = min;'));
-        assert.ok(html.includes('mean: sum / numPixels'));
+        assert.ok(html.includes('data.statistics = result.statistics;'));
+        assert.ok(html.includes('return data.statistics || null;'));
         assert.ok(html.includes('updateSliceStatisticsDisplay(statistics);'));
         assert.ok(html.includes('clearSliceStatistics();'));
     });

@@ -1,78 +1,7 @@
 import * as assert from 'assert';
-import * as vm from 'vm';
 import { WebviewUIManager } from '../webviewUIManager';
 
-interface TestElement {
-    value: string;
-    textContent: string;
-    style: Record<string, string>;
-    listeners: Map<string, (event?: unknown) => void>;
-    addEventListener(type: string, listener: (event?: unknown) => void): void;
-}
-
-function createViewer() {
-    const elements = new Map<string, TestElement>();
-    const getElement = (id: string): TestElement => {
-        let element = elements.get(id);
-        if (!element) {
-            element = {
-                value: id === 'endianness' ? 'little' : '0',
-                textContent: '', style: {},
-                listeners: new Map(),
-                addEventListener(type, listener) { this.listeners.set(type, listener); }
-            };
-            elements.set(id, element);
-        }
-        return element;
-    };
-    const rect = { left: 100, top: 50, width: 200, height: 100 };
-    const canvas = Object.assign(getElement('imageCanvas'), {
-        getBoundingClientRect: () => rect,
-        getContext: () => ({
-            createImageData: (width: number, height: number) => ({ data: new Uint8ClampedArray(width * height * 4) }),
-            putImageData: () => undefined
-        }),
-        parentElement: { getBoundingClientRect: () => ({ width: 240, height: 140 }) }
-    });
-    const windowListeners = new Map<string, () => void>();
-    const context = vm.createContext({
-        Uint8Array, ArrayBuffer, DataView,
-        document: { getElementById: getElement, addEventListener: () => undefined },
-        window: {
-            addEventListener: (type: string, listener: () => void) => windowListeners.set(type, listener)
-        },
-        acquireVsCodeApi: () => ({ postMessage: () => undefined }),
-        requestAnimationFrame: (callback: () => void) => { callback(); return 1; }
-    });
-    const html = new WebviewUIManager().getHtmlForWebview();
-    const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
-    assert.ok(script);
-    vm.runInContext(script, context);
-
-    return {
-        rect, getElement, windowListeners,
-        pixelInfo() {
-            return {
-                position: getElement('pixelPosition').textContent,
-                value: getElement('pixelValue').textContent
-            };
-        },
-        display(rawData: Uint8Array, dataType = 'uint8', littleEndian = true, slice = 0, plane = 'axial') {
-            getElement('endianness').value = littleEndian ? 'little' : 'big';
-            context.sliceData = { width: 2, height: 2, rawData, dataType, slice, plane };
-            vm.runInContext('displaySliceData(sliceData);', context);
-        },
-        hover(clientX = 250, clientY = 125) {
-            canvas.listeners.get('mousemove')!({ clientX, clientY });
-        },
-        leave() { canvas.listeners.get('mouseleave')!(); },
-        setWindow() {
-            getElement('windowMin').value = '0';
-            getElement('windowMax').value = '1';
-            getElement('windowMin').listeners.get('input')!();
-        }
-    };
-}
+import { createViewer } from './viewerHarness';
 
 suite('Pixel hover', () => {
     const types = [
@@ -123,6 +52,7 @@ suite('Pixel hover', () => {
         viewer.rect.width = 400;
         viewer.rect.height = 200;
         viewer.windowListeners.get('resize')!();
+        viewer.flush();
         assert.deepStrictEqual(viewer.pixelInfo(), { position: '(0, 0)', value: '5' });
     });
 
