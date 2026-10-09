@@ -162,6 +162,23 @@ export class WebviewUIManager {
             overflow-y: auto;
         }
 
+        #pixelTooltip {
+            position: fixed;
+            z-index: 10;
+            pointer-events: none;
+            max-width: min(320px, calc(100vw - 16px));
+            padding: 8px 10px;
+            background-color: var(--vscode-editorHoverWidget-background);
+            color: var(--vscode-editorHoverWidget-foreground);
+            border: 1px solid var(--vscode-editorHoverWidget-border);
+            border-radius: 4px;
+            font-family: var(--vscode-editor-font-family);
+            font-size: 12px;
+            white-space: pre-line;
+            overflow-wrap: anywhere;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+        }
+
         .side-panel--left {
             width: 260px;
         }
@@ -387,6 +404,7 @@ export class WebviewUIManager {
 
             <div class="canvas-container">
                 <canvas id="imageCanvas"></canvas>
+                <div id="pixelTooltip" role="tooltip" hidden></div>
             </div>
             
             <div class="side-panel side-panel--right">
@@ -424,6 +442,8 @@ export class WebviewUIManager {
         
         let fileInfo = null;
         let currentSliceData = null;
+        let pixelInspection = null;
+        let hoverPosition = null;
         let sliceMin = 0;
         let sliceMax = 0;
         let windowMin = null;
@@ -457,6 +477,7 @@ export class WebviewUIManager {
         const togglePlaneButton = document.getElementById('togglePlane');
         const canvas = document.getElementById('imageCanvas');
         const ctx = canvas.getContext('2d');
+        const pixelTooltip = document.getElementById('pixelTooltip');
         const errorPanel = document.getElementById('errorPanel');
         const errorMessage = document.getElementById('errorMessage');
         
@@ -491,6 +512,9 @@ export class WebviewUIManager {
         
         // Mouse wheel navigation on canvas
         canvas.addEventListener('wheel', handleMouseWheel, { passive: false });        
+        canvas.addEventListener('mousemove', handlePixelHover);
+        canvas.addEventListener('mouseleave', clearPixelHover);
+        window.addEventListener('scroll', clearPixelHover, true);
         
         // Handle editor/sidebar resize to rescale canvas when VS Code panels move.
         window.addEventListener('resize', scheduleCanvasScale);
@@ -602,6 +626,7 @@ export class WebviewUIManager {
         }
 
         function requestSlice(forceReload) {
+            clearPixelHover();
             if (forceReload) {
                 clearSliceCacheAndPrefetch();
             }
@@ -1166,7 +1191,60 @@ export class WebviewUIManager {
             }
 
             ctx.putImageData(imageData, 0, 0);
+            // Reuse the reader that rendered the image so inspection matches its byte order.
+            pixelInspection = { width, height, slice: data.slice, plane: data.plane, rawData, bytesPerPixel, getValue };
             scaleCanvasToFit();
+        }
+
+        function handlePixelHover(event) {
+            hoverPosition = { clientX: event.clientX, clientY: event.clientY };
+            updatePixelTooltip();
+        }
+
+        function clearPixelHover() {
+            hoverPosition = null;
+            pixelTooltip.hidden = true;
+        }
+
+        function updatePixelTooltip() {
+            if (!hoverPosition || !pixelInspection) {
+                pixelTooltip.hidden = true;
+                return;
+            }
+
+            const rect = canvas.getBoundingClientRect();
+            const { clientX, clientY } = hoverPosition;
+            const { width, height, slice, plane, rawData, bytesPerPixel, getValue } = pixelInspection;
+            const x = Math.floor((clientX - rect.left) * width / rect.width);
+            const y = Math.floor((clientY - rect.top) * height / rect.height);
+            if (rect.width <= 0 || rect.height <= 0 || x < 0 || y < 0 || x >= width || y >= height) {
+                pixelTooltip.hidden = true;
+                return;
+            }
+
+            const offset = (y * width + x) * bytesPerPixel;
+            if (offset + bytesPerPixel > rawData.byteLength) {
+                pixelTooltip.hidden = true;
+                return;
+            }
+
+            const value = getValue(offset);
+            const valueText = Object.is(value, -0) ? '-0' : String(value);
+            pixelTooltip.textContent = 'Pixel (x: ' + x + ', y: ' + y + ')\\n' +
+                'Slice: ' + slice + ' (' + plane + ')\\nValue: ' + valueText;
+            pixelTooltip.hidden = false;
+
+            const margin = 8;
+            let left = clientX + 12;
+            let top = clientY + 12;
+            if (left + pixelTooltip.offsetWidth > window.innerWidth - margin) {
+                left = clientX - pixelTooltip.offsetWidth - 12;
+            }
+            if (top + pixelTooltip.offsetHeight > window.innerHeight - margin) {
+                top = clientY - pixelTooltip.offsetHeight - 12;
+            }
+            pixelTooltip.style.left = Math.max(margin, left) + 'px';
+            pixelTooltip.style.top = Math.max(margin, top) + 'px';
         }
         
         function scaleCanvasToFit() {
@@ -1193,6 +1271,7 @@ export class WebviewUIManager {
                 canvas.style.width = displayWidth + 'px';
                 canvas.style.height = displayHeight + 'px';
             }
+            updatePixelTooltip();
         }
 
         function scheduleCanvasScale() {
@@ -1274,6 +1353,7 @@ export class WebviewUIManager {
         }
 
         function handleMetadataChange() {
+            clearPixelHover();
             clearSliceCacheAndPrefetch();
             windowMin = null;
             windowMax = null;
@@ -1342,6 +1422,7 @@ export class WebviewUIManager {
         }
         
         function togglePlane() {
+            clearPixelHover();
             clearSliceCacheAndPrefetch();
             currentPlane = currentPlane === 'axial' ? 'coronal' : 'axial';
             togglePlaneButton.textContent = 'Plane: ' + currentPlane.charAt(0).toUpperCase() + currentPlane.slice(1);
