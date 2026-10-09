@@ -6,7 +6,7 @@ A Visual Studio Code extension for viewing and analyzing binary image files with
 - View raw binary as images with configurable data types (uint8/int8/uint16/int16/uint32/int32/float32/float64)
 - Axial and coronal planes with instant toggling
 - Window/level controls with live preview and reset
-- Hover over a pixel to see its original value and zero-based image coordinates
+- Hover over a pixel to see its original value and zero-based image coordinates in the left sidebar
 - Real-time rendering with auto-scaling to fit the viewport
 - Slice navigation via slider, mouse wheel, and arrow keys
 - File info panel: name, size, dimensions, estimated slice count

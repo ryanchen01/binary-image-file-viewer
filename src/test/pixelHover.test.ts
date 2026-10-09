@@ -5,10 +5,7 @@ import { WebviewUIManager } from '../webviewUIManager';
 interface TestElement {
     value: string;
     textContent: string;
-    hidden: boolean;
     style: Record<string, string>;
-    offsetWidth: number;
-    offsetHeight: number;
     listeners: Map<string, (event?: unknown) => void>;
     addEventListener(type: string, listener: (event?: unknown) => void): void;
 }
@@ -20,8 +17,7 @@ function createViewer() {
         if (!element) {
             element = {
                 value: id === 'endianness' ? 'little' : '0',
-                textContent: '', hidden: true, style: {},
-                offsetWidth: 180, offsetHeight: 60,
+                textContent: '', style: {},
                 listeners: new Map(),
                 addEventListener(type, listener) { this.listeners.set(type, listener); }
             };
@@ -43,7 +39,6 @@ function createViewer() {
         Uint8Array, ArrayBuffer, DataView,
         document: { getElementById: getElement, addEventListener: () => undefined },
         window: {
-            innerWidth: 360, innerHeight: 180,
             addEventListener: (type: string, listener: () => void) => windowListeners.set(type, listener)
         },
         acquireVsCodeApi: () => ({ postMessage: () => undefined }),
@@ -55,7 +50,13 @@ function createViewer() {
     vm.runInContext(script, context);
 
     return {
-        tooltip: getElement('pixelTooltip'), rect, getElement, windowListeners,
+        rect, getElement, windowListeners,
+        pixelInfo() {
+            return {
+                position: getElement('pixelPosition').textContent,
+                value: getElement('pixelValue').textContent
+            };
+        },
         display(rawData: Uint8Array, dataType = 'uint8', littleEndian = true, slice = 0, plane = 'axial') {
             getElement('endianness').value = littleEndian ? 'little' : 'big';
             context.sliceData = { width: 2, height: 2, rawData, dataType, slice, plane };
@@ -106,10 +107,9 @@ suite('Pixel hover', () => {
                 padded.set(rawData, 5);
                 viewer.display(padded.subarray(5), type, littleEndian);
                 viewer.hover();
-                assert.strictEqual(viewer.tooltip.hidden, false);
-                assert.strictEqual(viewer.tooltip.textContent, `Pixel (x: 1, y: 1)\nSlice: 0 (axial)\nValue: ${value}`);
+                assert.deepStrictEqual(viewer.pixelInfo(), { position: '(1, 1)', value: String(value) });
                 viewer.setWindow();
-                assert.ok(viewer.tooltip.textContent.endsWith(`Value: ${value}`));
+                assert.strictEqual(viewer.pixelInfo().value, String(value));
             });
         }
     }
@@ -119,40 +119,46 @@ suite('Pixel hover', () => {
         viewer.display(new Uint8Array([1, 2, 3, 4]));
         viewer.hover();
         viewer.display(new Uint8Array([5, 6, 7, 8]), 'uint8', true, 3, 'coronal');
-        assert.strictEqual(viewer.tooltip.textContent, 'Pixel (x: 1, y: 1)\nSlice: 3 (coronal)\nValue: 8');
+        assert.deepStrictEqual(viewer.pixelInfo(), { position: '(1, 1)', value: '8' });
         viewer.rect.width = 400;
         viewer.rect.height = 200;
         viewer.windowListeners.get('resize')!();
-        assert.strictEqual(viewer.tooltip.textContent, 'Pixel (x: 0, y: 0)\nSlice: 3 (coronal)\nValue: 5');
+        assert.deepStrictEqual(viewer.pixelInfo(), { position: '(0, 0)', value: '5' });
     });
 
-    test('hides without an image, outside the image, on exit, on scroll, and on metadata edits', () => {
+    test('clears without an image, outside the image, on exit, on scroll, and on metadata edits', () => {
         const viewer = createViewer();
         viewer.hover();
-        assert.strictEqual(viewer.tooltip.hidden, true);
+        assert.deepStrictEqual(viewer.pixelInfo(), { position: '-', value: '-' });
         viewer.display(new Uint8Array([1, 2, 3, 4]));
         for (const [x, y] of [[99, 50], [100, 49], [300, 50], [100, 150]]) {
             viewer.hover(x, y);
-            assert.strictEqual(viewer.tooltip.hidden, true);
+            assert.deepStrictEqual(viewer.pixelInfo(), { position: '-', value: '-' });
         }
         viewer.hover(100, 50);
-        assert.ok(viewer.tooltip.textContent.includes('Pixel (x: 0, y: 0)'));
+        assert.deepStrictEqual(viewer.pixelInfo(), { position: '(0, 0)', value: '1' });
         viewer.leave();
-        assert.strictEqual(viewer.tooltip.hidden, true);
+        assert.deepStrictEqual(viewer.pixelInfo(), { position: '-', value: '-' });
         viewer.hover();
         viewer.windowListeners.get('scroll')!();
-        assert.strictEqual(viewer.tooltip.hidden, true);
+        assert.deepStrictEqual(viewer.pixelInfo(), { position: '-', value: '-' });
         viewer.hover();
         viewer.getElement('width').listeners.get('input')!();
-        assert.strictEqual(viewer.tooltip.hidden, true);
+        assert.deepStrictEqual(viewer.pixelInfo(), { position: '-', value: '-' });
     });
 
-    test('keeps the tooltip inside the viewport near its bottom right edge', () => {
-        const viewer = createViewer();
-        viewer.display(new Uint8Array([1, 2, 3, 4]));
-        viewer.hover();
-        assert.strictEqual(viewer.tooltip.style.left, '58px');
-        assert.strictEqual(viewer.tooltip.style.top, '53px');
+    test('places pixel coordinates and values in the left sidebar without a tooltip or plane label', () => {
+        const html = new WebviewUIManager().getHtmlForWebview();
+        const leftPanelIndex = html.indexOf('class="side-panel side-panel--left"');
+        const canvasIndex = html.indexOf('class="canvas-container"');
+        const pixelSectionIndex = html.indexOf('class="info-subsection pixel-info"', leftPanelIndex);
+        assert.ok(pixelSectionIndex > leftPanelIndex && pixelSectionIndex < canvasIndex);
+        const pixelSection = html.slice(pixelSectionIndex, canvasIndex);
+        assert.ok(pixelSection.includes('id="pixelPosition">-</span>'));
+        assert.ok(pixelSection.includes('id="pixelValue">-</span>'));
+        assert.ok(!pixelSection.includes('Plane'));
+        assert.ok(!html.includes('pixelTooltip'));
+        assert.ok(!html.includes('role="tooltip"'));
     });
 
     for (const value of [NaN, Infinity, -Infinity, -0]) {
@@ -162,7 +168,7 @@ suite('Pixel hover', () => {
             new DataView(bytes.buffer).setFloat64(24, value, true);
             viewer.display(bytes, 'float64');
             viewer.hover();
-            assert.ok(viewer.tooltip.textContent.endsWith('Value: ' + (Object.is(value, -0) ? '-0' : String(value))));
+            assert.strictEqual(viewer.pixelInfo().value, Object.is(value, -0) ? '-0' : String(value));
         });
     }
 });

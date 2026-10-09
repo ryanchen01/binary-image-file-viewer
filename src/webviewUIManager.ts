@@ -162,21 +162,15 @@ export class WebviewUIManager {
             overflow-y: auto;
         }
 
-        #pixelTooltip {
-            position: fixed;
-            z-index: 10;
-            pointer-events: none;
-            max-width: min(320px, calc(100vw - 16px));
-            padding: 8px 10px;
-            background-color: var(--vscode-editorHoverWidget-background);
-            color: var(--vscode-editorHoverWidget-foreground);
-            border: 1px solid var(--vscode-editorHoverWidget-border);
-            border-radius: 4px;
-            font-family: var(--vscode-editor-font-family);
-            font-size: 12px;
-            white-space: pre-line;
+        .pixel-info .info-item {
+            align-items: flex-start;
+            gap: 12px;
+        }
+
+        .pixel-info .info-item span:last-child {
+            min-width: 0;
+            text-align: right;
             overflow-wrap: anywhere;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
         }
 
         .side-panel--left {
@@ -399,12 +393,22 @@ export class WebviewUIManager {
                             <span id="sliceStatSum">-</span>
                         </div>
                     </div>
+                    <div class="info-subsection pixel-info">
+                        <h4>Pixel</h4>
+                        <div class="info-item">
+                            <span>Position (x, y):</span>
+                            <span id="pixelPosition">-</span>
+                        </div>
+                        <div class="info-item">
+                            <span>Value:</span>
+                            <span id="pixelValue">-</span>
+                        </div>
+                    </div>
                 </div>
             </div>
 
             <div class="canvas-container">
                 <canvas id="imageCanvas"></canvas>
-                <div id="pixelTooltip" role="tooltip" hidden></div>
             </div>
             
             <div class="side-panel side-panel--right">
@@ -477,7 +481,6 @@ export class WebviewUIManager {
         const togglePlaneButton = document.getElementById('togglePlane');
         const canvas = document.getElementById('imageCanvas');
         const ctx = canvas.getContext('2d');
-        const pixelTooltip = document.getElementById('pixelTooltip');
         const errorPanel = document.getElementById('errorPanel');
         const errorMessage = document.getElementById('errorMessage');
         
@@ -490,6 +493,8 @@ export class WebviewUIManager {
         const sliceStatMaxEl = document.getElementById('sliceStatMax');
         const sliceStatMeanEl = document.getElementById('sliceStatMean');
         const sliceStatSumEl = document.getElementById('sliceStatSum');
+        const pixelPositionEl = document.getElementById('pixelPosition');
+        const pixelValueEl = document.getElementById('pixelValue');
         
         // Event listeners
         loadSliceButton.addEventListener('click', loadSlice);
@@ -1192,59 +1197,51 @@ export class WebviewUIManager {
 
             ctx.putImageData(imageData, 0, 0);
             // Reuse the reader that rendered the image so inspection matches its byte order.
-            pixelInspection = { width, height, slice: data.slice, plane: data.plane, rawData, bytesPerPixel, getValue };
+            pixelInspection = { width, height, rawData, bytesPerPixel, getValue };
             scaleCanvasToFit();
         }
 
         function handlePixelHover(event) {
             hoverPosition = { clientX: event.clientX, clientY: event.clientY };
-            updatePixelTooltip();
+            updatePixelInfo();
         }
 
         function clearPixelHover() {
             hoverPosition = null;
-            pixelTooltip.hidden = true;
+            clearPixelInfo();
         }
 
-        function updatePixelTooltip() {
+        function clearPixelInfo() {
+            pixelPositionEl.textContent = '-';
+            pixelValueEl.textContent = '-';
+        }
+
+        function updatePixelInfo() {
             if (!hoverPosition || !pixelInspection) {
-                pixelTooltip.hidden = true;
+                clearPixelInfo();
                 return;
             }
 
             const rect = canvas.getBoundingClientRect();
             const { clientX, clientY } = hoverPosition;
-            const { width, height, slice, plane, rawData, bytesPerPixel, getValue } = pixelInspection;
+            const { width, height, rawData, bytesPerPixel, getValue } = pixelInspection;
             const x = Math.floor((clientX - rect.left) * width / rect.width);
             const y = Math.floor((clientY - rect.top) * height / rect.height);
             if (rect.width <= 0 || rect.height <= 0 || x < 0 || y < 0 || x >= width || y >= height) {
-                pixelTooltip.hidden = true;
+                clearPixelInfo();
                 return;
             }
 
             const offset = (y * width + x) * bytesPerPixel;
             if (offset + bytesPerPixel > rawData.byteLength) {
-                pixelTooltip.hidden = true;
+                clearPixelInfo();
                 return;
             }
 
             const value = getValue(offset);
             const valueText = Object.is(value, -0) ? '-0' : String(value);
-            pixelTooltip.textContent = 'Pixel (x: ' + x + ', y: ' + y + ')\\n' +
-                'Slice: ' + slice + ' (' + plane + ')\\nValue: ' + valueText;
-            pixelTooltip.hidden = false;
-
-            const margin = 8;
-            let left = clientX + 12;
-            let top = clientY + 12;
-            if (left + pixelTooltip.offsetWidth > window.innerWidth - margin) {
-                left = clientX - pixelTooltip.offsetWidth - 12;
-            }
-            if (top + pixelTooltip.offsetHeight > window.innerHeight - margin) {
-                top = clientY - pixelTooltip.offsetHeight - 12;
-            }
-            pixelTooltip.style.left = Math.max(margin, left) + 'px';
-            pixelTooltip.style.top = Math.max(margin, top) + 'px';
+            pixelPositionEl.textContent = '(' + x + ', ' + y + ')';
+            pixelValueEl.textContent = valueText;
         }
         
         function scaleCanvasToFit() {
@@ -1271,7 +1268,7 @@ export class WebviewUIManager {
                 canvas.style.width = displayWidth + 'px';
                 canvas.style.height = displayHeight + 'px';
             }
-            updatePixelTooltip();
+            updatePixelInfo();
         }
 
         function scheduleCanvasScale() {
