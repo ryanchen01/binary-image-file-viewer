@@ -4,6 +4,10 @@ All notable changes to the "binary-image-file-viewer" extension are documented h
 
 This project adheres to Keep a Changelog and Semantic Versioning.
 
+## [0.9.0] - 2026-10-09
+### Added
+- Pixel hover tooltip showing the original value, coordinates, slice, and plane.
+
 ## [0.8.0] - 2026-05-19
 ### Added
 - MHD file support with custom editor and commands
