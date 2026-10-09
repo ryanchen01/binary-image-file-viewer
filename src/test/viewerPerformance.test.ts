@@ -4,6 +4,33 @@ import { RENDER_WORKER_SOURCE } from '../renderWorker';
 import { createViewer } from './viewerHarness';
 
 suite('Worker rendering and navigation', () => {
+    test('keeps window slider positions and bounds while a new slice waits for worker statistics', () => {
+        const viewer = createViewer();
+        viewer.display(new Uint8Array([0, 25, 50, 100]));
+        viewer.setWindow('20', '80');
+        const controls = () => viewer.run(`({
+            min: windowMinInput.value, max: windowMaxInput.value,
+            minBound: windowMinInput.min, maxBound: windowMaxInput.max,
+            minStep: windowMinInput.step, maxStep: windowMaxInput.step
+        })`);
+        const previous = controls();
+        viewer.context.nextSlice = {
+            width: 2, height: 2, rawData: new Uint8Array([10, 40, 80, 200]),
+            dataType: 'uint8', endianness: true, slice: 1
+        };
+        viewer.run('displaySliceData(nextSlice);');
+        assert.deepStrictEqual(controls(), previous, 'unknown statistics must not reset the slider range');
+        viewer.flushFrames(); viewer.flushJobs();
+        assert.deepStrictEqual(controls(), previous, 'controls must stay stable until the worker reply arrives');
+        viewer.flushReplies(); viewer.flush();
+        assert.strictEqual(Number(viewer.getElement('windowMin').value), 20);
+        assert.strictEqual(Number(viewer.getElement('windowMax').value), 80);
+        assert.strictEqual(viewer.run('windowMinInput.min'), 10);
+        assert.strictEqual(viewer.run('windowMaxInput.max'), 200);
+        assert.strictEqual(viewer.run('windowMin'), 20);
+        assert.strictEqual(viewer.run('windowMax'), 80);
+    });
+
     test('renders every datatype and byte order with matching statistics', () => {
         const types = [
             ['uint8', 1, 'setUint8'], ['int8', 1, 'setInt8'],

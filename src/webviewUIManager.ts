@@ -1177,10 +1177,9 @@ export class WebviewUIManager {
         function updateSliceRange(data) {
             const statistics = computeSliceStatistics(data);
             if (!statistics) {
-                sliceMin = 0;
-                sliceMax = 0;
+                // Keep the last known slider range until the worker supplies
+                // this slice's statistics. Missing statistics are not zeros.
                 clearSliceStatistics();
-                updateWindowControls();
                 return;
             }
 

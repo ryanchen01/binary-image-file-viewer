@@ -4,6 +4,12 @@ All notable changes to the "binary-image-file-viewer" extension are documented h
 
 This project adheres to Keep a Changelog and Semantic Versioning.
 
+## [0.10.1] - 2026-10-09
+
+### Fixed
+
+- Fixed window/level sliders briefly resetting to zero when moving between slices while worker statistics load.
+
 ## [0.10.0] - 2026-10-09
 
 ### Changed
