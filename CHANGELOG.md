@@ -4,6 +4,19 @@ All notable changes to the "binary-image-file-viewer" extension are documented h
 
 This project adheres to Keep a Changelog and Semantic Versioning.
 
+## [0.10.2] - 2026-10-11
+
+### Fixed
+
+- Reject malformed or unsafe MHD dimensions and fractional or invalid slice indices instead of silently truncating them.
+- Allow data filenames beginning with `..` when they remain inside the MHD folder.
+
+### Changed
+
+- Share datatype definitions across file reading, rendering, and pixel inspection.
+- Remove unused processing and cache code, inline single-use helpers, and remove the template Hello World command.
+- Expand regression coverage for metadata, slice validation, caching, and stale responses.
+
 ## [0.10.1] - 2026-10-09
 
 ### Fixed
