@@ -259,16 +259,32 @@ export class WebviewUIManager {
 
         @media (max-width: 1200px) {
             .content {
-                flex-direction: column;
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                grid-template-rows: minmax(320px, 1fr) auto;
+                grid-template-areas:
+                    "image image"
+                    "left right";
                 overflow: visible;
             }
 
             .side-panel {
                 width: 100%;
+                min-width: 0;
+                overflow-wrap: anywhere;
                 overflow: visible;
             }
 
+            .side-panel--left {
+                grid-area: left;
+            }
+
+            .side-panel--right {
+                grid-area: right;
+            }
+
             .canvas-container {
+                grid-area: image;
                 min-height: 320px;
             }
         }

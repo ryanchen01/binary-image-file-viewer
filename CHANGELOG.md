@@ -4,6 +4,12 @@ All notable changes to the "binary-image-file-viewer" extension are documented h
 
 This project adheres to Keep a Changelog and Semantic Versioning.
 
+## [0.10.3] - 2026-10-11
+
+### Changed
+
+- Place both sidebars side by side beneath the image when the window is 1200px wide or narrower.
+
 ## [0.10.2] - 2026-10-11
 
 ### Fixed
