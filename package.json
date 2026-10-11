@@ -18,7 +18,6 @@
   "activationEvents": [
     "onCustomEditor:binaryImageViewer.editor",
     "onCustomEditor:binaryImageViewer.mhdEditor",
-    "onCommand:binary-image-file-viewer.helloWorld",
     "onCommand:binary-image-file-viewer.openMhdViewer",
     "onCommand:binary-image-file-viewer.openMhdText"
   ],
@@ -38,10 +37,6 @@
       }
     },
     "commands": [
-      {
-        "command": "binary-image-file-viewer.helloWorld",
-        "title": "Hello World"
-      },
       {
         "command": "binary-image-file-viewer.openMhdViewer",
         "title": "Open MHD Viewer",

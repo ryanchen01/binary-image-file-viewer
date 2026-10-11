@@ -23,8 +23,17 @@ suite('Slice I/O', () => {
             assert.deepStrictEqual(Buffer.from(result), Buffer.concat(ranges.map(range => bytes.subarray(range.offset, range.offset + range.length))));
 
             const messages: any[] = [];
-            const provider = new BinaryImageEditorProvider({ subscriptions: [] } as any);
-            await (provider as any).readSlice({ postMessage: (message: any) => messages.push(message) }, uri, 8, 4, 2, 'uint16', true, 'coronal');
+            const provider = new BinaryImageEditorProvider();
+            const document = await provider.openCustomDocument(uri, {} as any, {} as any);
+            let receive!: (message: any) => Promise<void>;
+            await provider.resolveCustomEditor(document, {
+                webview: {
+                    postMessage: (message: any) => messages.push(message),
+                    onDidReceiveMessage: (listener: any) => { receive = listener; return { dispose: () => undefined }; }
+                },
+                onDidDispose: () => undefined
+            } as any, {} as any);
+            await receive({ type: 'readSlice', requestId: 1, width: 8, height: 4, slice: 2, dataType: 'uint16', endianness: true, plane: 'coronal' });
             assert.strictEqual(messages[0].encoding, 'binary');
             assert.ok(messages[0].data instanceof ArrayBuffer);
             assert.strictEqual(messages[0].data.byteLength, result.byteLength, 'pooled buffers must not send unrelated bytes');
@@ -103,14 +112,14 @@ suite('Slice I/O', () => {
     });
 
     test('panel messages cancel a pending read before slice data crosses the remote connection', async () => {
-        const provider = new BinaryImageEditorProvider({ subscriptions: [] } as any);
+        const provider = new BinaryImageEditorProvider();
         const manager = (provider as any).fileCacheManager;
         manager.getFileStats = async () => ({ size: 4 });
         let startRead!: () => void;
         const started = new Promise<void>(resolve => { startRead = resolve; });
         let finishRead!: () => void;
         const pending = new Promise<void>(resolve => { finishRead = resolve; });
-        manager.readFileRange = async (_uri: any, _offset: number, _length: number, token: vscode.CancellationToken) => {
+        manager.readFileRanges = async (_uri: any, _ranges: Array<{ offset: number; length: number }>, token: vscode.CancellationToken) => {
             startRead(); await pending;
             assert.ok(token.isCancellationRequested);
             return new Uint8Array(4);

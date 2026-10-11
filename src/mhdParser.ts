@@ -22,7 +22,27 @@ const ELEMENT_TYPE_MAP: Record<string, SupportedDataType> = {
 };
 
 export function parseMhdHeader(content: string): MhdMetadata {
-    const fields = parseFields(content);
+    const fields = new Map<string, string>();
+    const lines = content.split(/\r?\n/);
+
+    for (const line of lines) {
+        const trimmedLine = line.trim();
+        if (!trimmedLine || trimmedLine.startsWith('#')) {
+            continue;
+        }
+
+        const separatorIndex = trimmedLine.indexOf('=');
+        if (separatorIndex < 0) {
+            continue;
+        }
+
+        const key = trimmedLine.slice(0, separatorIndex).trim();
+        const value = trimmedLine.slice(separatorIndex + 1).trim();
+        if (key) {
+            fields.set(key, value);
+        }
+    }
+
     const binaryData = getRequiredField(fields, 'BinaryData');
     if (!parseBoolean(binaryData)) {
         throw new Error('Unsupported MHD file: BinaryData must be True');
@@ -33,15 +53,42 @@ export function parseMhdHeader(content: string): MhdMetadata {
         throw new Error('Unsupported MHD file: CompressedData must be False');
     }
 
-    const dimSize = parseDimSize(getRequiredField(fields, 'DimSize'));
+    const dimensionTokens = getRequiredField(fields, 'DimSize').split(/\s+/);
+    const dimSize = dimensionTokens.map(Number);
+    if (
+        (dimSize.length !== 2 && dimSize.length !== 3) ||
+        dimensionTokens.some((token) => !/^\d+$/.test(token)) ||
+        dimSize.some((dimension) => !Number.isSafeInteger(dimension) || dimension <= 0)
+    ) {
+        throw new Error('Invalid MHD DimSize: expected two or three positive integer dimensions');
+    }
     const elementType = getRequiredField(fields, 'ElementType').toUpperCase();
     const dataType = ELEMENT_TYPE_MAP[elementType];
     if (!dataType) {
         throw new Error(`Unsupported MHD ElementType: ${elementType}`);
     }
 
-    const byteOrderMsb = parseBoolean(getRequiredByteOrderField(fields));
-    const elementDataFile = normalizeElementDataFile(getRequiredField(fields, 'ElementDataFile'));
+    const byteOrderValue = fields.get('BinaryDataByteOrderMSB') ?? fields.get('ElementByteOrderMSB');
+    if (!byteOrderValue) {
+        throw new Error('Invalid MHD file: missing BinaryDataByteOrderMSB or ElementByteOrderMSB');
+    }
+    const byteOrderMsb = parseBoolean(byteOrderValue);
+    const dataFileValue = getRequiredField(fields, 'ElementDataFile').trim();
+    const doubleQuoted = /^"(.+)"$/.exec(dataFileValue);
+    const singleQuoted = /^'(.+)'$/.exec(dataFileValue);
+    const wasQuoted = Boolean(doubleQuoted || singleQuoted);
+    const elementDataFile = (doubleQuoted?.[1] ?? singleQuoted?.[1] ?? dataFileValue).trim();
+    const normalizedValue = elementDataFile.toUpperCase();
+
+    if (!elementDataFile) {
+        throw new Error('Invalid MHD ElementDataFile: missing data file');
+    }
+    if (normalizedValue === 'LIST' || normalizedValue === 'LOCAL') {
+        throw new Error(`Unsupported MHD ElementDataFile: ${elementDataFile}`);
+    }
+    if (!wasQuoted && /\s/.test(elementDataFile)) {
+        throw new Error('Unsupported MHD ElementDataFile: whitespace is not allowed in the data file path');
+    }
 
     return {
         width: dimSize[0],
@@ -66,51 +113,17 @@ export function resolveMhdDataFilePath(metadataPath: string, elementDataFile: st
     const resolvedPath = path.resolve(metadataDir, elementDataFile);
     const relativePath = path.relative(metadataDir, resolvedPath);
 
-    if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) {
+    if (relativePath === '..' || relativePath.startsWith('..' + path.sep) || path.isAbsolute(relativePath)) {
         throw new Error('Unsupported MHD ElementDataFile: paths outside the MHD folder are not allowed');
     }
 
     return resolvedPath;
 }
 
-function parseFields(content: string): Map<string, string> {
-    const fields = new Map<string, string>();
-    const lines = content.split(/\r?\n/);
-
-    for (const line of lines) {
-        const trimmedLine = line.trim();
-        if (!trimmedLine || trimmedLine.startsWith('#')) {
-            continue;
-        }
-
-        const separatorIndex = trimmedLine.indexOf('=');
-        if (separatorIndex < 0) {
-            continue;
-        }
-
-        const key = trimmedLine.slice(0, separatorIndex).trim();
-        const value = trimmedLine.slice(separatorIndex + 1).trim();
-        if (key) {
-            fields.set(key, value);
-        }
-    }
-
-    return fields;
-}
-
 function getRequiredField(fields: Map<string, string>, key: string): string {
     const value = fields.get(key);
     if (!value) {
         throw new Error(`Invalid MHD file: missing ${key}`);
-    }
-
-    return value;
-}
-
-function getRequiredByteOrderField(fields: Map<string, string>): string {
-    const value = fields.get('BinaryDataByteOrderMSB') ?? fields.get('ElementByteOrderMSB');
-    if (!value) {
-        throw new Error('Invalid MHD file: missing BinaryDataByteOrderMSB or ElementByteOrderMSB');
     }
 
     return value;
@@ -126,37 +139,4 @@ function parseBoolean(value: string): boolean {
     }
 
     throw new Error(`Invalid MHD boolean value: ${value}`);
-}
-
-function parseDimSize(value: string): number[] {
-    const dimensions = value.split(/\s+/).map((part) => Number.parseInt(part, 10));
-    if (
-        (dimensions.length !== 2 && dimensions.length !== 3) ||
-        dimensions.some((dimension) => !Number.isInteger(dimension) || dimension <= 0)
-    ) {
-        throw new Error('Invalid MHD DimSize: expected two or three positive integer dimensions');
-    }
-
-    return dimensions;
-}
-
-function normalizeElementDataFile(value: string): string {
-    const trimmedValue = value.trim();
-    const doubleQuoted = /^"(.+)"$/.exec(trimmedValue);
-    const singleQuoted = /^'(.+)'$/.exec(trimmedValue);
-    const wasQuoted = Boolean(doubleQuoted || singleQuoted);
-    const unquotedValue = (doubleQuoted?.[1] ?? singleQuoted?.[1] ?? trimmedValue).trim();
-    const normalizedValue = unquotedValue.toUpperCase();
-
-    if (!unquotedValue) {
-        throw new Error('Invalid MHD ElementDataFile: missing data file');
-    }
-    if (normalizedValue === 'LIST' || normalizedValue === 'LOCAL') {
-        throw new Error(`Unsupported MHD ElementDataFile: ${unquotedValue}`);
-    }
-    if (!wasQuoted && /\s/.test(unquotedValue)) {
-        throw new Error('Unsupported MHD ElementDataFile: whitespace is not allowed in the data file path');
-    }
-
-    return unquotedValue;
 }

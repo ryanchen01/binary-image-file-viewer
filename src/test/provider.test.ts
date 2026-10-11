@@ -8,11 +8,12 @@ import { CONSTANTS } from '../constants';
 import { openMhdText, openMhdViewer } from '../mhdCommands';
 import { parseMhdHeader, resolveMhdDataFilePath } from '../mhdParser';
 import { SliceReader } from '../sliceReader';
-import { applyWindowLevel, calculateMaxSlices, getBytesPerPixel } from '../utils';
+import { getBytesPerPixel } from '../utils';
+import { WebviewUIManager } from '../webviewUIManager';
+import { createViewer } from './viewerHarness';
 
 suite('BinaryImageEditorProvider', () => {
-    const context = { subscriptions: [] } as unknown as vscode.ExtensionContext;
-    const provider = new BinaryImageEditorProvider(context);
+    const provider = new BinaryImageEditorProvider();
 
     test('getBytesPerPixel returns expected values', () => {
         assert.strictEqual(getBytesPerPixel('uint8'), 1);
@@ -21,11 +22,7 @@ suite('BinaryImageEditorProvider', () => {
         assert.strictEqual(getBytesPerPixel('float32'), 4);
         assert.strictEqual(getBytesPerPixel('int32'), 4);
         assert.strictEqual(getBytesPerPixel('float64'), 8);
-        assert.strictEqual(getBytesPerPixel('unknown' as any), 4);
-    });
-
-    test('supported extensions include mhd', () => {
-        assert.ok(CONSTANTS.SUPPORTED_EXTENSIONS.includes('.mhd'));
+        assert.throws(() => getBytesPerPixel('unknown' as any), /Unsupported data type/);
     });
 
     test('package contributes mhd as an optional custom editor and keeps raw/bin default viewer separate', async () => {
@@ -195,14 +192,10 @@ suite('BinaryImageEditorProvider', () => {
         const dataPath = resolveMhdDataFilePath(metadataPath, 'recon.raw');
 
         assert.strictEqual(dataPath, path.join(path.dirname(metadataPath), 'recon.raw'));
-        assert.throws(() => resolveMhdDataFilePath(metadataPath, '..\\recon.raw'), /outside the MHD folder/);
+        assert.strictEqual(resolveMhdDataFilePath(metadataPath, '..scan.raw'), path.join(path.dirname(metadataPath), '..scan.raw'));
+        assert.throws(() => resolveMhdDataFilePath(metadataPath, '../recon.raw'), /outside the MHD folder/);
+        assert.throws(() => resolveMhdDataFilePath(metadataPath, '..'), /outside the MHD folder/);
         assert.throws(() => resolveMhdDataFilePath(metadataPath, 'file://recon.raw'), /URI values/);
-    });
-
-    test('calculateMaxSlices computes correct slice count', () => {
-        const fileSize = 200;
-        const slices = calculateMaxSlices(fileSize, 10, 5, 'uint8');
-        assert.strictEqual(slices, 4);
     });
 
     test('slice reader computes axial slice byte ranges', () => {
@@ -224,15 +217,8 @@ suite('BinaryImageEditorProvider', () => {
         ]);
     });
 
-    test('applyWindowLevel maps values into 0-255 range', () => {
-        const values = [0, 50, 100, 150];
-        const mapped = applyWindowLevel(values, 0, 100);
-        assert.deepStrictEqual(Array.from(mapped), [0, 128, 255, 255]);
-    });
-
     test('generated HTML includes window controls', () => {
-        const asAny = provider as any;
-        const html: string = asAny.getHtmlForWebview({} as any);
+        const html = new WebviewUIManager().getHtmlForWebview();
         assert.ok(html.includes('id="windowMin"'));
         assert.ok(html.includes('id="windowMax"'));
         assert.ok(html.includes('id="resetWindow"'));
@@ -240,8 +226,7 @@ suite('BinaryImageEditorProvider', () => {
     });
 
     test('generated HTML places file information left of the canvas and window controls on the right', () => {
-        const asAny = provider as any;
-        const html: string = asAny.getHtmlForWebview({} as any);
+        const html = new WebviewUIManager().getHtmlForWebview();
         const leftPanelIndex = html.indexOf('class="side-panel side-panel--left"');
         const canvasIndex = html.indexOf('class="canvas-container"');
         const rightPanelIndex = html.indexOf('class="side-panel side-panel--right"');
@@ -256,8 +241,7 @@ suite('BinaryImageEditorProvider', () => {
     });
 
     test('generated HTML places statistics under file information', () => {
-        const asAny = provider as any;
-        const html: string = asAny.getHtmlForWebview({} as any);
+        const html = new WebviewUIManager().getHtmlForWebview();
         const fileInfoIndex = html.indexOf('<h3>File Information</h3>');
         const statisticsIndex = html.indexOf('<h4>Statistics</h4>', fileInfoIndex);
 
@@ -270,8 +254,7 @@ suite('BinaryImageEditorProvider', () => {
     });
 
     test('generated HTML narrows the left side panel independently', () => {
-        const asAny = provider as any;
-        const html: string = asAny.getHtmlForWebview({} as any);
+        const html = new WebviewUIManager().getHtmlForWebview();
 
         assert.ok(html.includes('.side-panel--left {'));
         assert.ok(html.includes('width: 260px;'));
@@ -280,8 +263,7 @@ suite('BinaryImageEditorProvider', () => {
     });
 
     test('generated HTML can shrink inside resized VS Code editor area', () => {
-        const asAny = provider as any;
-        const html: string = asAny.getHtmlForWebview({} as any);
+        const html = new WebviewUIManager().getHtmlForWebview();
         assert.ok(html.includes('overflow: auto;'));
         assert.ok(html.includes('min-height: 0;'));
         assert.ok(html.includes('ResizeObserver'));
@@ -291,103 +273,79 @@ suite('BinaryImageEditorProvider', () => {
         assert.ok(!html.includes('min-height: 400px'));
     });
 
-    test('generated HTML coalesces slice requests and supports manual reloads', () => {
-        const asAny = provider as any;
-        const html: string = asAny.getHtmlForWebview({} as any);
-        assert.ok(html.includes('pendingSliceRequest'));
-        assert.ok(html.includes('decodeSliceData'));
-        assert.ok(html.includes('requestSlice(false)'));
-        assert.ok(html.includes('requestSlice(true)'));
-        assert.ok(html.includes('updateFileSize(data.fileSize)'));
-        assert.ok(!html.includes('computeGlobalWindow'));
+    test('mhd parser rejects malformed and unsafe dimensions without truncating them', () => {
+        for (const dimensions of ['16junk 8', '2.5 8', '1e3 8', '9007199254740993 8', '0 8', '-1 8']) {
+            assert.throws(() => parseMhdHeader([
+                'BinaryData = True',
+                'BinaryDataByteOrderMSB = False',
+                'CompressedData = False',
+                `DimSize = ${dimensions}`,
+                'ElementType = MET_UCHAR',
+                'ElementDataFile = image.raw'
+            ].join('\n')), /DimSize/, dimensions);
+        }
     });
 
-    test('generated HTML caches slices and prefetches nearby axial slices', () => {
-        const asAny = provider as any;
-        const html: string = asAny.getHtmlForWebview({} as any);
-
-        assert.ok(html.includes('const sliceCache = new Map();'));
-        assert.ok(/const PREFETCH_RADIUS = \d+;/.test(html));
-        assert.ok(html.includes('const MAX_SLICE_CACHE_ENTRIES = 24;'));
-        assert.ok(html.includes('function enqueueNearbyPrefetchRequests(targetRequest)'));
-        assert.ok(html.includes('targetRequest.slice - radius'));
-        assert.ok(html.includes('targetRequest.slice + radius'));
-        assert.ok(html.includes("request.priority = 'visible';"));
-        assert.ok(html.includes("priority: 'prefetch'"));
+    test('slice byte ranges reject fractional, non-finite, and unsafe dimensions and indices', () => {
+        const reader = new SliceReader();
+        for (const invalid of [0, -1, 1.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1]) {
+            for (const [width, height] of [[invalid, 2], [2, invalid]]) {
+                assert.throws(() => reader.getAxialSliceRange(16, width, height, 0, 'uint8'));
+                assert.throws(() => reader.getCoronalSliceRanges(16, width, height, 0, 'uint8'));
+            }
+        }
+        for (const invalid of [-1, 0.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1]) {
+            assert.throws(() => reader.getAxialSliceRange(16, 2, 2, invalid, 'uint8'));
+            assert.throws(() => reader.getCoronalSliceRanges(16, 2, 2, invalid, 'uint8'));
+        }
     });
 
-    test('generated HTML suppresses duplicate prefetches and clears slice cache on metadata changes', () => {
-        const asAny = provider as any;
-        const html: string = asAny.getHtmlForWebview({} as any);
-
-        assert.ok(html.includes('function isSliceRequestKnown(cacheKey)'));
-        assert.ok(html.includes('sliceCache.has(cacheKey)'));
-        assert.ok(html.includes('inFlightPrefetchKeys.has(cacheKey)'));
-        assert.ok(html.includes('prefetchQueue.some(request => request.cacheKey === cacheKey)'));
-        assert.ok(html.includes('function clearSliceCacheAndPrefetch()'));
-        assert.ok(html.includes('sliceCache.clear();'));
-        assert.ok(html.includes('prefetchQueue = [];'));
-        assert.ok(html.includes('clearSliceCacheAndPrefetch();'));
+    test('slice controls reject fractional dimensions and fractional or empty indices', () => {
+        for (const [field, value] of [['width', '2.5'], ['height', '2.5'], ['slice', '0.5'], ['slice', '']]) {
+            const viewer = createViewer();
+            viewer.configure();
+            viewer.getElement(field).value = value;
+            viewer.getElement('loadSlice').listeners.get('click')!();
+            assert.strictEqual(viewer.postedMessages.filter(message => message.type === 'readSlice').length, 0, `${field}=${value}`);
+            assert.ok(viewer.getElement('errorMessage').textContent.length > 0);
+        }
     });
 
-    test('generated HTML stores stale prefetch responses without rendering over the active slice', () => {
-        const asAny = provider as any;
-        const html: string = asAny.getHtmlForWebview({} as any);
-        const prefetchHandlerIndex = html.indexOf('function handlePrefetchSliceData(data)');
-        const cacheIndex = html.indexOf('cacheSliceData(receivedData);', prefetchHandlerIndex);
-        const matchIndex = html.indexOf('if (requestMatchesCurrentControls(completedRequest))', cacheIndex);
-        const renderIndex = html.indexOf('displaySliceData(receivedData);', matchIndex);
-
-        assert.ok(prefetchHandlerIndex >= 0);
-        assert.ok(cacheIndex > prefetchHandlerIndex);
-        assert.ok(matchIndex > cacheIndex);
-        assert.ok(renderIndex > matchIndex);
+    test('a refreshed file size cannot paint a response after it resets the selected slice', () => {
+        const viewer = createViewer();
+        viewer.configure(2, 2, 10);
+        viewer.navigate(5);
+        const request = viewer.postedMessages.find(message => message.type === 'readSlice' && message.priority === 'visible');
+        assert.ok(request);
+        viewer.receive({
+            ...request,
+            type: 'sliceData',
+            encoding: 'binary',
+            data: new Uint8Array([1, 2, 3, 4]).buffer,
+            fileSize: 4
+        });
+        viewer.flush();
+        assert.strictEqual(viewer.getElement('slice').value, '0');
+        assert.strictEqual(viewer.getElement('slice').max, '0');
+        assert.strictEqual(viewer.getElement('sliceSlider').value, '0');
+        assert.strictEqual(viewer.painted.length, 0, 'slice 5 must not render when the refreshed controls select slice 0');
     });
 
-    test('generated HTML preserves window values across slice changes and only clips slider positions to the new slice range', () => {
-        const asAny = provider as any;
-        const html: string = asAny.getHtmlForWebview({} as any);
-        const displayIndex = html.indexOf('function displaySliceData(data)');
-        const updateIndex = html.indexOf('updateSliceRange(currentSliceData);', displayIndex);
-        const renderIndex = html.indexOf('renderSlice(currentSliceData);', updateIndex);
-        const resetIndex = html.indexOf('resetWindowToSliceRange();', updateIndex);
-        assert.ok(updateIndex >= 0);
-        assert.ok(renderIndex > updateIndex);
-        assert.ok(resetIndex === -1 || resetIndex > renderIndex);
-        assert.ok(html.includes('clipWindowValueToSliceRange(windowMin)'));
-        assert.ok(!html.includes('syncWindowToSliceRange()'));
-        assert.ok(!html.includes('windowMin = clippedWindowMin;'));
-        assert.ok(!html.includes('windowMax = clippedWindowMax;'));
-        assert.ok(html.includes('windowMinInput.min = controlMin;'));
-        assert.ok(html.includes('windowMaxInput.max = controlMax;'));
-    });
-
-    test('generated HTML computes and clears slice statistics from decoded slice values', () => {
-        const asAny = provider as any;
-        const html: string = asAny.getHtmlForWebview({} as any);
-
-        assert.ok(html.includes('function computeSliceStatistics(data)'));
-        assert.ok(html.includes('data.statistics = result.statistics;'));
-        assert.ok(html.includes('return data.statistics || null;'));
-        assert.ok(html.includes('updateSliceStatisticsDisplay(statistics);'));
-        assert.ok(html.includes('clearSliceStatistics();'));
-    });
-
-    test('generated HTML applies mhd metadata defaults and auto-loads the first slice', () => {
-        const asAny = provider as any;
-        const html: string = asAny.getHtmlForWebview({} as any);
-        const fileInfoIndex = html.indexOf('function handleFileInfo(info)');
-        const applyIndex = html.indexOf('applyMetadataFromFileInfo(info);', fileInfoIndex);
-        const loadIndex = html.indexOf('loadSlice();', applyIndex);
-
-        assert.ok(html.includes('function applyMetadataFromFileInfo(info)'));
-        assert.ok(html.includes("widthInput.value = String(info.width);"));
-        assert.ok(html.includes("heightInput.value = String(info.height);"));
-        assert.ok(html.includes('dataTypeSelect.value = info.dataType;'));
-        assert.ok(html.includes("endiannessSelect.value = info.endianness === 'big' ? 'big' : 'little';"));
-        assert.ok(html.includes('Number.isFinite(fileInfo.depth) && fileInfo.depth > 0'));
-        assert.ok(applyIndex > fileInfoIndex);
-        assert.ok(loadIndex > applyIndex);
+    test('mhd metadata sets controls and requests the first slice', () => {
+        const viewer = createViewer();
+        viewer.receive({ type: 'fileInfo', fileSize: 128, width: 4, height: 4, depth: 4, dataType: 'uint16', endianness: 'big' });
+        assert.strictEqual(viewer.getElement('width').value, '4');
+        assert.strictEqual(viewer.getElement('height').value, '4');
+        assert.strictEqual(viewer.getElement('dataType').value, 'uint16');
+        assert.strictEqual(viewer.getElement('endianness').value, 'big');
+        assert.strictEqual(viewer.getElement('slice').max, '3');
+        const request = viewer.postedMessages.find(message => message.type === 'readSlice' && message.priority === 'visible');
+        assert.ok(request);
+        assert.strictEqual(request.slice, 0);
+        assert.strictEqual(request.width, 4);
+        assert.strictEqual(request.height, 4);
+        assert.strictEqual(request.dataType, 'uint16');
+        assert.strictEqual(request.endianness, false);
     });
 
     test('mhd document resolves data file and sends metadata file info', async () => {
@@ -408,14 +366,22 @@ suite('BinaryImageEditorProvider', () => {
             await fs.writeFile(metadataPath, header);
             await fs.writeFile(dataPath, Buffer.alloc(fileSize));
 
-            const localProvider = new BinaryImageEditorProvider(context);
+            const localProvider = new BinaryImageEditorProvider();
             const doc = await localProvider.openCustomDocument(vscode.Uri.file(metadataPath), {} as any, {} as any);
             const resolvedDataPath = (doc as any).dataUri.fsPath;
-            const resolvedMetadataPath = (doc as any).sourceUri.fsPath;
+            const resolvedMetadataPath = doc.uri.fsPath;
             assert.strictEqual(resolvedDataPath.toLowerCase(), dataPath.toLowerCase());
 
             const messages: any[] = [];
-            await (localProvider as any).sendFileData({ postMessage: (message: any) => messages.push(message) }, doc);
+            let receive!: (message: any) => Promise<void>;
+            await localProvider.resolveCustomEditor(doc, {
+                webview: {
+                    postMessage: (message: any) => messages.push(message),
+                    onDidReceiveMessage: (listener: any) => { receive = listener; return { dispose: () => undefined }; }
+                },
+                onDidDispose: () => undefined
+            } as any, {} as any);
+            await receive({ type: 'ready' });
 
             assert.deepStrictEqual(messages[0], {
                 type: 'fileInfo',

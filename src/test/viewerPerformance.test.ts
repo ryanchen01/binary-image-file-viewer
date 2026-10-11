@@ -111,9 +111,16 @@ suite('Worker rendering and navigation', () => {
 
     test('enforces a byte budget, preserves LRU order, and skips oversized entries', () => {
         const viewer = createViewer(8);
-        viewer.context.cacheData = [0, 1, 2].map(slice => ({ cacheKey: String(slice), rawData: new Uint8Array(4) }));
-        viewer.run("cacheSliceData(cacheData[0]); cacheSliceData(cacheData[1]); getCachedSlice('0'); cacheSliceData(cacheData[2]);");
-        assert.strictEqual(viewer.run("sliceCache.has('0') && sliceCache.has('2') && !sliceCache.has('1')"), true);
+        viewer.configure(2, 2, 2);
+        viewer.context.cacheData = [0, 1, 2].map(slice => ({
+            width: 2, height: 2, slice, dataType: 'uint8', endianness: true, plane: 'axial', rawData: new Uint8Array(4)
+        }));
+        viewer.run('cacheSliceData(cacheData[0]); cacheSliceData(cacheData[1]);');
+        viewer.navigate(0);
+        viewer.flush();
+        assert.strictEqual(viewer.painted.length, 1, 'cache hit must display the slice');
+        viewer.run('cacheSliceData(cacheData[2]);');
+        assert.strictEqual(viewer.run('sliceCache.has(cacheData[0].cacheKey) && sliceCache.has(cacheData[2].cacheKey) && !sliceCache.has(cacheData[1].cacheKey)'), true);
         assert.strictEqual(viewer.run('sliceCacheBytes'), 8);
         viewer.run('cacheSliceData({cacheKey: "large", rawData: new Uint8Array(9)});');
         assert.strictEqual(viewer.run('sliceCacheBytes'), 8);

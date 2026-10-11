@@ -1,3 +1,4 @@
+import { DATA_TYPES } from './dataTypes';
 import { CONSTANTS } from './constants';
 import { RENDER_WORKER_SOURCE } from './renderWorker';
 
@@ -37,7 +38,7 @@ export class WebviewUIManager {
             height: 100%;
             overflow: auto;
         }
-        
+
         .container {
             display: flex;
             flex-direction: column;
@@ -47,7 +48,7 @@ export class WebviewUIManager {
             width: 100%;
             margin: 0 auto;
         }
-        
+
         .controls {
             display: flex;
             flex-wrap: wrap;
@@ -57,14 +58,14 @@ export class WebviewUIManager {
             border-bottom: 1px solid var(--vscode-panel-border);
             margin-bottom: 24px;
         }
-        
+
         .control-group {
             display: flex;
             flex-direction: column;
             gap: 6px;
             min-width: 0;
         }
-        
+
         .control-group label {
             font-size: 11px;
             color: var(--vscode-descriptionForeground);
@@ -73,7 +74,7 @@ export class WebviewUIManager {
             letter-spacing: 0.5px;
             white-space: nowrap;
         }
-        
+
         .control-group input[type="number"] {
             width: 80px;
             padding: 6px 8px;
@@ -85,7 +86,7 @@ export class WebviewUIManager {
             transition: border-color 0.2s ease, box-shadow 0.2s ease;
             box-sizing: border-box;
         }
-        
+
         .control-group input[type="range"] {
             width: 100%;
             padding: 0;
@@ -94,7 +95,7 @@ export class WebviewUIManager {
             border-radius: 0;
             cursor: pointer;
         }
-        
+
         .control-group select {
             width: 120px;
             padding: 6px 8px;
@@ -107,19 +108,19 @@ export class WebviewUIManager {
             box-sizing: border-box;
             cursor: pointer;
         }
-        
+
         .control-group input:focus,
         .control-group select:focus {
             outline: none;
             border-color: var(--vscode-focusBorder);
             box-shadow: 0 0 0 1px var(--vscode-focusBorder);
         }
-        
+
         .control-group input:hover,
         .control-group select:hover {
             border-color: var(--vscode-input-border-hover);
         }
-        
+
         .content {
             display: flex;
             flex: 1;
@@ -128,7 +129,7 @@ export class WebviewUIManager {
             overflow: hidden;
             align-items: stretch;
         }
-        
+
         .canvas-container {
             flex: 1;
             display: flex;
@@ -142,7 +143,7 @@ export class WebviewUIManager {
             position: relative;
             min-width: 0;
         }
-        
+
         #imageCanvas {
             max-width: 100%;
             max-height: 100%;
@@ -152,7 +153,7 @@ export class WebviewUIManager {
             image-rendering: pixelated;
             transition: transform 0.3s ease;
         }
-        
+
         .side-panel {
             width: 320px;
             display: flex;
@@ -177,7 +178,7 @@ export class WebviewUIManager {
         .side-panel--left {
             width: 260px;
         }
-        
+
         .info-panel {
             padding: 16px;
             background-color: var(--vscode-editorWidget-background);
@@ -185,7 +186,7 @@ export class WebviewUIManager {
             border-radius: 6px;
             box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
         }
-        
+
         .info-panel h3 {
             margin: 0 0 12px 0;
             font-size: 13px;
@@ -209,7 +210,7 @@ export class WebviewUIManager {
             text-transform: uppercase;
             letter-spacing: 0.5px;
         }
-        
+
         .info-item {
             display: flex;
             justify-content: space-between;
@@ -218,18 +219,18 @@ export class WebviewUIManager {
             font-size: 12px;
             padding: 4px 0;
         }
-        
+
         .info-item span:first-child {
             color: var(--vscode-descriptionForeground);
             font-weight: 500;
         }
-        
+
         .info-item span:last-child {
             color: var(--vscode-foreground);
             font-family: var(--vscode-editor-font-family);
             font-weight: 600;
         }
-        
+
         .error {
             color: var(--vscode-errorForeground);
             background-color: var(--vscode-inputValidation-errorBackground);
@@ -241,17 +242,17 @@ export class WebviewUIManager {
             font-size: 12px;
             line-height: 1.4;
         }
-        
+
         .window-controls {
             display: flex;
             flex-direction: column;
             gap: 12px;
         }
-        
+
         .window-controls .control-group {
             margin-bottom: 0;
         }
-        
+
         .window-controls .control-group:last-child {
             margin-bottom: 0;
         }
@@ -271,7 +272,7 @@ export class WebviewUIManager {
                 min-height: 320px;
             }
         }
-        
+
         button {
             padding: 8px 16px;
             background-color: var(--vscode-button-background);
@@ -286,18 +287,18 @@ export class WebviewUIManager {
             text-transform: uppercase;
             letter-spacing: 0.5px;
         }
-        
+
         button:hover {
             background-color: var(--vscode-button-hoverBackground);
             transform: translateY(-1px);
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
         }
-        
+
         button:active {
             transform: translateY(0);
             box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
         }
-        
+
         button:disabled {
             background-color: var(--vscode-button-secondaryBackground);
             color: var(--vscode-button-secondaryForeground);
@@ -354,7 +355,7 @@ export class WebviewUIManager {
                 <button id="reloadSlice" style="margin-top: 20px;">Reload</button>
             </div>
         </div>
-        
+
         <div class="content">
             <div class="side-panel side-panel--left">
                 <div class="info-panel">
@@ -411,7 +412,7 @@ export class WebviewUIManager {
             <div class="canvas-container">
                 <canvas id="imageCanvas"></canvas>
             </div>
-            
+
             <div class="side-panel side-panel--right">
                 <div class="info-panel">
                     <div class="window-controls">
@@ -434,7 +435,7 @@ export class WebviewUIManager {
                         </div>
                     </div>
                 </div>
-                
+
                 <div id="errorPanel" class="error" style="display: none;">
                     <div id="errorMessage"></div>
                 </div>
@@ -444,7 +445,8 @@ export class WebviewUIManager {
 
     <script>
         const vscode = acquireVsCodeApi();
-        
+        const dataTypes = ${JSON.stringify(DATA_TYPES)};
+
         let fileInfo = null;
         let currentSliceData = null;
         let pixelInspection = null;
@@ -477,7 +479,7 @@ export class WebviewUIManager {
         let nextRenderId = 1;
         let recycledPixels = null;
         const renderWorkerSource = ${JSON.stringify(RENDER_WORKER_SOURCE)};
-        
+
         // DOM elements
         const widthInput = document.getElementById('width');
         const heightInput = document.getElementById('height');
@@ -495,7 +497,7 @@ export class WebviewUIManager {
         const ctx = canvas.getContext('2d');
         const errorPanel = document.getElementById('errorPanel');
         const errorMessage = document.getElementById('errorMessage');
-        
+
         // Info display elements
         const fileSizeEl = document.getElementById('fileSize');
         const numSlicesEl = document.getElementById('numSlices');
@@ -507,7 +509,7 @@ export class WebviewUIManager {
         const sliceStatSumEl = document.getElementById('sliceStatSum');
         const pixelPositionEl = document.getElementById('pixelPosition');
         const pixelValueEl = document.getElementById('pixelValue');
-        
+
         // Event listeners
         loadSliceButton.addEventListener('click', loadSlice);
         reloadSliceButton.addEventListener('click', reloadSlice);
@@ -515,7 +517,7 @@ export class WebviewUIManager {
         heightInput.addEventListener('input', handleMetadataChange);
         dataTypeSelect.addEventListener('change', handleMetadataChange);
         endiannessSelect.addEventListener('change', handleMetadataChange);
-        
+
         // Slice navigation event listeners
         sliceInput.addEventListener('input', syncSliceControls);
         sliceSlider.addEventListener('input', syncSliceControls);
@@ -523,16 +525,55 @@ export class WebviewUIManager {
         windowMaxInput.addEventListener('input', updateWindow);
         resetWindowButton.addEventListener('click', resetWindow);
         togglePlaneButton.addEventListener('click', togglePlane);
-        
+
         // Keyboard shortcuts for slice navigation
-        document.addEventListener('keydown', handleKeyboard);
-        
+        document.addEventListener('keydown', event => {
+            if (document.activeElement && document.activeElement.tagName === 'INPUT' && document.activeElement !== sliceInput) {
+                return;
+            }
+
+            const currentSlice = parseInt(sliceInput.value);
+            const maxSlice = parseInt(sliceInput.max);
+
+            if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
+                event.preventDefault();
+                if (currentSlice > 0) {
+                    navigateToSlice(currentSlice - 1);
+                    loadSlice();
+                }
+            } else if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
+                event.preventDefault();
+                if (currentSlice < maxSlice) {
+                    navigateToSlice(currentSlice + 1);
+                    loadSlice();
+                }
+            } else if (event.key === 'Enter' && document.activeElement === sliceInput) {
+                loadSlice();
+            }
+        });
+
         // Mouse wheel navigation on canvas
-        canvas.addEventListener('wheel', handleMouseWheel, { passive: false });        
-        canvas.addEventListener('mousemove', handlePixelHover);
+        canvas.addEventListener('wheel', event => {
+            event.preventDefault();
+
+            const currentSlice = parseInt(sliceInput.value);
+            const maxSlice = parseInt(sliceInput.max);
+
+            if (event.deltaY < 0 && currentSlice > 0) {
+                navigateToSlice(currentSlice - 1);
+                loadSlice();
+            } else if (event.deltaY > 0 && currentSlice < maxSlice) {
+                navigateToSlice(currentSlice + 1);
+                loadSlice();
+            }
+        }, { passive: false });
+        canvas.addEventListener('mousemove', event => {
+            hoverPosition = { clientX: event.clientX, clientY: event.clientY };
+            updatePixelInfo();
+        });
         canvas.addEventListener('mouseleave', clearPixelHover);
         window.addEventListener('scroll', clearPixelHover, true);
-        
+
         // Handle editor/sidebar resize to rescale canvas when VS Code panels move.
         window.addEventListener('resize', scheduleCanvasScale);
         if (typeof ResizeObserver !== 'undefined' && canvas.parentElement) {
@@ -544,105 +585,133 @@ export class WebviewUIManager {
             cancelRead(activeSliceRequest);
             cancelRead(activePrefetchRequest);
         });
-        
+
         // Message handling
         window.addEventListener('message', event => {
             const message = event.data;
-            
+
             switch (message.type) {
                 case '${CONSTANTS.MESSAGE_TYPES.FILE_INFO}':
-                    handleFileInfo(message);
+                    {
+                        fileInfo = message;
+                        fileSizeEl.textContent = formatBytes(message.fileSize);
+                        const hasMetadata = Number.isFinite(message.width) &&
+                            Number.isFinite(message.height) &&
+                            Number.isFinite(message.depth) &&
+                            typeof message.dataType === 'string' &&
+                            typeof message.endianness === 'string';
+                        if (hasMetadata) {
+                            widthInput.value = String(message.width);
+                            heightInput.value = String(message.height);
+                            dataTypeSelect.value = message.dataType;
+                            endiannessSelect.value = message.endianness === 'big' ? 'big' : 'little';
+                            sliceInput.value = '0';
+                            sliceSlider.value = '0';
+                            currentPlane = 'axial';
+                            togglePlaneButton.textContent = 'Plane: Axial';
+                            clearSliceCacheAndPrefetch();
+                            windowMin = null;
+                            windowMax = null;
+                            sliceMin = 0;
+                            sliceMax = 255;
+                            clearSliceStatistics();
+                            updateWindowControls();
+                        }
+                        updateSliceInfo();
+                        hideError();
+                        if (hasMetadata) {
+                            loadSlice();
+                        }
+                    }
                     break;
                 case '${CONSTANTS.MESSAGE_TYPES.SLICE_DATA}':
-                    handleSliceData(message);
-                    break;
-                case '${CONSTANTS.MESSAGE_TYPES.WINDOW_DATA}':
-                    sliceMin = message.windowMin;
-                    sliceMax = message.windowMax;
-                    windowMin = sliceMin;
-                    windowMax = sliceMax;
-                    updateWindowControls();
-                    if (currentSliceData) {
-                        renderSlice(currentSliceData);
+                    {
+                        if (message.priority === 'prefetch') {
+                            if (message.requestId !== undefined && (!activePrefetchRequest || message.requestId !== activePrefetchRequest.requestId)) {
+                                return;
+                            }
+
+                            const completedRequest = activePrefetchRequest;
+                            try {
+                                if (completedRequest) {
+                                    const current = buildSliceRequest(false, 'visible');
+                                    if (completedRequest.cancelRequested || !current ||
+                                        !isSameSliceRequest({ ...completedRequest, slice: current.slice }, current) ||
+                                        Math.abs(completedRequest.slice - current.slice) > PREFETCH_RADIUS) {
+                                        return;
+                                    }
+                                    const receivedData = normalizeReceivedSliceData(message, completedRequest);
+                                    cacheSliceData(receivedData);
+                                    updateFileSize(message.fileSize);
+                                    if (requestMatchesCurrentControls(completedRequest)) {
+                                        displaySliceData(receivedData);
+                                        hideError();
+                                    }
+                                }
+                            } catch (error) {
+                                showError(String(error));
+                            } finally {
+                                finishPrefetchRequest(completedRequest);
+                            }
+                            return;
+                        }
+
+                        if (message.requestId !== undefined && (!activeSliceRequest || message.requestId !== activeSliceRequest.requestId)) {
+                            return;
+                        }
+
+                        const completedRequest = activeSliceRequest;
+                        try {
+                            if (!completedRequest || completedRequest.cancelRequested ||
+                                !requestMatchesCurrentControls(completedRequest)) {
+                                return;
+                            }
+                            const receivedData = normalizeReceivedSliceData(message, completedRequest);
+                            cacheSliceData(receivedData);
+                            updateFileSize(message.fileSize);
+                            if (requestMatchesCurrentControls(completedRequest)) {
+                                displaySliceData(receivedData);
+                                hideError();
+                            }
+                        } catch (error) {
+                            showError(String(error));
+                        } finally {
+                            finishSliceRequest(completedRequest);
+                        }
                     }
                     break;
                 case '${CONSTANTS.MESSAGE_TYPES.ERROR}':
-                    handleError(message);
+                    {
+                        if (message.priority === 'prefetch') {
+                            if (message.requestId !== undefined && (!activePrefetchRequest || message.requestId !== activePrefetchRequest.requestId)) {
+                                return;
+                            }
+
+                            const completedRequest = activePrefetchRequest;
+                            if (!message.cancelled && completedRequest && !completedRequest.cancelRequested && requestMatchesCurrentControls(completedRequest)) {
+                                showError(message.message);
+                            }
+                            finishPrefetchRequest(completedRequest);
+                            return;
+                        }
+
+                        if (message.requestId !== undefined) {
+                            if (!activeSliceRequest || message.requestId !== activeSliceRequest.requestId) {
+                                return;
+                            }
+                            const completedRequest = activeSliceRequest;
+                            if (!message.cancelled && !completedRequest.cancelRequested && requestMatchesCurrentControls(completedRequest)) {
+                                showError(message.message);
+                            }
+                            finishSliceRequest(completedRequest);
+                        } else {
+                            showError(message.message);
+                        }
+                    }
                     break;
             }
         });
-        
-        function handleFileInfo(info) {
-            fileInfo = info;
-            fileSizeEl.textContent = formatBytes(info.fileSize);
-            applyMetadataFromFileInfo(info);
-            updateSliceInfo();
-            hideError();
-            if (hasImageMetadata(info)) {
-                loadSlice();
-            }
-        }
 
-        function applyMetadataFromFileInfo(info) {
-            if (!hasImageMetadata(info)) {
-                return;
-            }
-
-            widthInput.value = String(info.width);
-            heightInput.value = String(info.height);
-            dataTypeSelect.value = info.dataType;
-            endiannessSelect.value = info.endianness === 'big' ? 'big' : 'little';
-            sliceInput.value = '0';
-            sliceSlider.value = '0';
-            currentPlane = 'axial';
-            togglePlaneButton.textContent = 'Plane: Axial';
-            clearSliceCacheAndPrefetch();
-            windowMin = null;
-            windowMax = null;
-            sliceMin = 0;
-            sliceMax = 255;
-            clearSliceStatistics();
-            updateWindowControls();
-        }
-
-        function hasImageMetadata(info) {
-            return Number.isFinite(info.width) &&
-                Number.isFinite(info.height) &&
-                Number.isFinite(info.depth) &&
-                typeof info.dataType === 'string' &&
-                typeof info.endianness === 'string';
-        }
-        
-        function handleSliceData(data) {
-            if (data.priority === 'prefetch') {
-                handlePrefetchSliceData(data);
-                return;
-            }
-
-            if (data.requestId !== undefined && (!activeSliceRequest || data.requestId !== activeSliceRequest.requestId)) {
-                return;
-            }
-
-            const completedRequest = activeSliceRequest;
-            try {
-                if (!completedRequest || completedRequest.cancelRequested ||
-                    !requestMatchesCurrentControls(completedRequest)) {
-                    return;
-                }
-                const receivedData = normalizeReceivedSliceData(data, completedRequest);
-                cacheSliceData(receivedData);
-                updateFileSize(data.fileSize);
-                if (completedRequest && requestMatchesCurrentControls(completedRequest)) {
-                    displaySliceData(receivedData);
-                    hideError();
-                }
-            } catch (error) {
-                showError(String(error));
-            } finally {
-                finishSliceRequest(completedRequest);
-            }
-        }
-        
         function loadSlice() {
             requestSlice(false);
         }
@@ -673,27 +742,69 @@ export class WebviewUIManager {
                 invalidateRender();
             }
 
-            const cachedSlice = forceReload ? null : getCachedSlice(request.cacheKey);
+            const cachedSlice = forceReload ? null : sliceCache.get(request.cacheKey);
             if (cachedSlice) {
+                sliceCache.delete(request.cacheKey);
+                sliceCache.set(request.cacheKey, cachedSlice);
                 displaySliceData(cachedSlice);
                 hideError();
             } else if (activePrefetchRequest && !activePrefetchRequest.cancelRequested && activePrefetchRequest.cacheKey === request.cacheKey) {
                 // The prefetch response will render if this slice is still current.
             } else {
-                removeQueuedPrefetch(request.cacheKey);
-                enqueueSliceRequest(request);
+                prefetchQueue = prefetchQueue.filter(queued => queued.cacheKey !== request.cacheKey);
+                request.priority = 'visible';
+                if (sliceRequestInFlight) {
+                    pendingSliceRequest = request;
+                } else {
+                    sendSliceRequest(request);
+                }
             }
 
-            enqueueNearbyPrefetchRequests(request);
+            prefetchQueue = [];
+            if (request.plane !== 'axial' || request.forceReload) {
+                return;
+            }
+
+            const maxSlice = parseInt(sliceInput.max);
+            if (!Number.isFinite(maxSlice) || maxSlice < 0) {
+                return;
+            }
+
+            const sliceBytes = request.width * request.height * getBytesPerPixel(request.dataType);
+            const radius = Math.min(PREFETCH_RADIUS, Math.max(0, Math.floor((MAX_SLICE_CACHE_BYTES / sliceBytes - 1) / 2)));
+            const minSlice = Math.max(0, request.slice - radius);
+            const lastSlice = Math.min(maxSlice, request.slice + radius);
+
+            const neighbors = [];
+            for (let distance = 1; distance <= radius; distance++) {
+                neighbors.push(request.slice + distance, request.slice - distance);
+            }
+            for (const slice of neighbors) {
+                if (slice < minSlice || slice > lastSlice) { continue; }
+
+                const neighborRequest = buildSliceRequest(false, 'prefetch', slice);
+                if (!neighborRequest || sliceCache.has(neighborRequest.cacheKey) ||
+                    inFlightPrefetchKeys.has(neighborRequest.cacheKey) ||
+                    (activePrefetchRequest && !activePrefetchRequest.cancelRequested && activePrefetchRequest.cacheKey === neighborRequest.cacheKey) ||
+                    (activeSliceRequest && !activeSliceRequest.cancelRequested && activeSliceRequest.cacheKey === neighborRequest.cacheKey) ||
+                    (pendingSliceRequest && pendingSliceRequest.cacheKey === neighborRequest.cacheKey) ||
+                    prefetchQueue.some(queued => queued.cacheKey === neighborRequest.cacheKey)) {
+                    continue;
+                }
+
+                prefetchQueue.push(neighborRequest);
+            }
+
+            processPrefetchQueue();
         }
 
         function buildSliceRequest(forceReload, priority, sliceOverride) {
-            const width = parseInt(widthInput.value);
-            const height = parseInt(heightInput.value);
-            const slice = sliceOverride !== undefined ? sliceOverride : parseInt(sliceInput.value);
+            const width = Number(widthInput.value);
+            const height = Number(heightInput.value);
+            const slice = sliceOverride !== undefined ? sliceOverride : sliceInput.value.trim() === '' ? NaN : Number(sliceInput.value);
             const dataType = dataTypeSelect.value;
             const endianness = endiannessSelect.value === 'little';
-            
+
             if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) ||
                 !Number.isSafeInteger(slice) || width <= 0 || height <= 0 || slice < 0) {
                 showError('Please enter valid positive values for width, height, and slice.');
@@ -728,16 +839,6 @@ export class WebviewUIManager {
 
             fileSizeEl.textContent = formatBytes(fileSize);
             updateSliceInfo();
-        }
-
-        function enqueueSliceRequest(request) {
-            request.priority = 'visible';
-            if (sliceRequestInFlight) {
-                pendingSliceRequest = request;
-                return;
-            }
-
-            sendSliceRequest(request);
         }
 
         function sendSliceRequest(request) {
@@ -786,40 +887,12 @@ export class WebviewUIManager {
         }
 
         function requestMatchesCurrentControls(request) {
-            return request.width === parseInt(widthInput.value) &&
-                request.height === parseInt(heightInput.value) &&
-                request.slice === parseInt(sliceInput.value) &&
+            return request.width === Number(widthInput.value) &&
+                request.height === Number(heightInput.value) &&
+                sliceInput.value.trim() !== '' && request.slice === Number(sliceInput.value) &&
                 request.dataType === dataTypeSelect.value &&
                 request.endianness === (endiannessSelect.value === 'little') &&
                 request.plane === currentPlane;
-        }
-
-        function handleError(message) {
-            if (message.priority === 'prefetch') {
-                if (message.requestId !== undefined && (!activePrefetchRequest || message.requestId !== activePrefetchRequest.requestId)) {
-                    return;
-                }
-
-                const completedRequest = activePrefetchRequest;
-                if (!message.cancelled && completedRequest && !completedRequest.cancelRequested && requestMatchesCurrentControls(completedRequest)) {
-                    showError(message.message);
-                }
-                finishPrefetchRequest(completedRequest);
-                return;
-            }
-
-            if (message.requestId !== undefined) {
-                if (!activeSliceRequest || message.requestId !== activeSliceRequest.requestId) {
-                    return;
-                }
-                const completedRequest = activeSliceRequest;
-                if (!message.cancelled && !completedRequest.cancelRequested && requestMatchesCurrentControls(completedRequest)) {
-                    showError(message.message);
-                }
-                finishSliceRequest(completedRequest);
-            } else {
-                showError(message.message);
-            }
         }
 
         function cancelRead(request) {
@@ -829,63 +902,23 @@ export class WebviewUIManager {
                 vscode.postMessage({ type: '${CONSTANTS.MESSAGE_TYPES.CANCEL_SLICE}', requestId: request.requestId });
             }
         }
-        
+
         function syncSliceControls(event) {
             const sourceElement = event.target;
             const newValue = parseInt(sourceElement.value);
-            
+
             if (sourceElement === sliceInput) {
                 sliceSlider.value = newValue;
             } else if (sourceElement === sliceSlider) {
                 sliceInput.value = newValue;
             }
-            
-            if (sourceElement === sliceSlider || 
+
+            if (sourceElement === sliceSlider ||
                 (sourceElement === sliceInput && event.type === 'input')) {
                 loadSlice();
             }
         }
-        
-        function handleKeyboard(event) {
-            if (document.activeElement && document.activeElement.tagName === 'INPUT' && document.activeElement !== sliceInput) {
-                return;
-            }
-            
-            const currentSlice = parseInt(sliceInput.value);
-            const maxSlice = parseInt(sliceInput.max);
-            
-            if (event.key === 'ArrowLeft' || event.key === 'ArrowUp') {
-                event.preventDefault();
-                if (currentSlice > 0) {
-                    navigateToSlice(currentSlice - 1);
-                    loadSlice();
-                }
-            } else if (event.key === 'ArrowRight' || event.key === 'ArrowDown') {
-                event.preventDefault();
-                if (currentSlice < maxSlice) {
-                    navigateToSlice(currentSlice + 1);
-                    loadSlice();
-                }
-            } else if (event.key === 'Enter' && document.activeElement === sliceInput) {
-                loadSlice();
-            }
-        }
-        
-        function handleMouseWheel(event) {
-            event.preventDefault();
-            
-            const currentSlice = parseInt(sliceInput.value);
-            const maxSlice = parseInt(sliceInput.max);
-            
-            if (event.deltaY < 0 && currentSlice > 0) {
-                navigateToSlice(currentSlice - 1);
-                loadSlice();
-            } else if (event.deltaY > 0 && currentSlice < maxSlice) {
-                navigateToSlice(currentSlice + 1);
-                loadSlice();
-            }
-        }
-        
+
         function navigateToSlice(newSlice) {
             sliceInput.value = newSlice;
             sliceSlider.value = newSlice;
@@ -901,17 +934,6 @@ export class WebviewUIManager {
                 request.plane,
                 request.slice
             ].join('|');
-        }
-
-        function getCachedSlice(cacheKey) {
-            const cachedSlice = sliceCache.get(cacheKey);
-            if (!cachedSlice) {
-                return null;
-            }
-
-            sliceCache.delete(cacheKey);
-            sliceCache.set(cacheKey, cachedSlice);
-            return cachedSlice;
         }
 
         function cacheSliceData(data) {
@@ -985,56 +1007,6 @@ export class WebviewUIManager {
             dimensionsEl.textContent = \`\${data.width} × \${data.height}\`;
         }
 
-        function enqueueNearbyPrefetchRequests(targetRequest) {
-            prefetchQueue = [];
-            if (targetRequest.plane !== 'axial' || targetRequest.forceReload) {
-                return;
-            }
-
-            const maxSlice = parseInt(sliceInput.max);
-            if (!Number.isFinite(maxSlice) || maxSlice < 0) {
-                return;
-            }
-
-            const sliceBytes = targetRequest.width * targetRequest.height * getBytesPerPixel(targetRequest.dataType);
-            const radius = Math.min(PREFETCH_RADIUS, Math.max(0, Math.floor((MAX_SLICE_CACHE_BYTES / sliceBytes - 1) / 2)));
-            const minSlice = Math.max(0, targetRequest.slice - radius);
-            const lastSlice = Math.min(maxSlice, targetRequest.slice + radius);
-
-            const neighbors = [];
-            for (let distance = 1; distance <= radius; distance++) {
-                neighbors.push(targetRequest.slice + distance, targetRequest.slice - distance);
-            }
-            for (const slice of neighbors) {
-                if (slice < minSlice || slice > lastSlice) { continue; }
-                if (slice === targetRequest.slice) {
-                    continue;
-                }
-
-                const request = buildSliceRequest(false, 'prefetch', slice);
-                if (!request || isSliceRequestKnown(request.cacheKey)) {
-                    continue;
-                }
-
-                prefetchQueue.push(request);
-            }
-
-            processPrefetchQueue();
-        }
-
-        function isSliceRequestKnown(cacheKey) {
-            return sliceCache.has(cacheKey) ||
-                inFlightPrefetchKeys.has(cacheKey) ||
-                (activePrefetchRequest && !activePrefetchRequest.cancelRequested && activePrefetchRequest.cacheKey === cacheKey) ||
-                (activeSliceRequest && !activeSliceRequest.cancelRequested && activeSliceRequest.cacheKey === cacheKey) ||
-                (pendingSliceRequest && pendingSliceRequest.cacheKey === cacheKey) ||
-                prefetchQueue.some(request => request.cacheKey === cacheKey);
-        }
-
-        function removeQueuedPrefetch(cacheKey) {
-            prefetchQueue = prefetchQueue.filter(request => request.cacheKey !== cacheKey);
-        }
-
         function processPrefetchQueue() {
             if (sliceRequestInFlight || prefetchRequestInFlight) {
                 return;
@@ -1046,49 +1018,16 @@ export class WebviewUIManager {
                     continue;
                 }
 
-                sendPrefetchRequest(nextRequest);
+                const requestId = nextSliceRequestId++;
+                activePrefetchRequest = { ...nextRequest, priority: 'prefetch', requestId };
+                prefetchRequestInFlight = true;
+                inFlightPrefetchKeys.add(activePrefetchRequest.cacheKey);
+
+                vscode.postMessage({
+                    type: '${CONSTANTS.MESSAGE_TYPES.READ_SLICE}',
+                    ...activePrefetchRequest
+                });
                 return;
-            }
-        }
-
-        function sendPrefetchRequest(request) {
-            const requestId = nextSliceRequestId++;
-            activePrefetchRequest = { ...request, priority: 'prefetch', requestId };
-            prefetchRequestInFlight = true;
-            inFlightPrefetchKeys.add(activePrefetchRequest.cacheKey);
-
-            vscode.postMessage({
-                type: '${CONSTANTS.MESSAGE_TYPES.READ_SLICE}',
-                ...activePrefetchRequest
-            });
-        }
-
-        function handlePrefetchSliceData(data) {
-            if (data.requestId !== undefined && (!activePrefetchRequest || data.requestId !== activePrefetchRequest.requestId)) {
-                return;
-            }
-
-            const completedRequest = activePrefetchRequest;
-            try {
-                if (completedRequest) {
-                    const current = buildSliceRequest(false, 'visible');
-                    if (completedRequest.cancelRequested || !current ||
-                        !isSameSliceRequest({ ...completedRequest, slice: current.slice }, current) ||
-                        Math.abs(completedRequest.slice - current.slice) > PREFETCH_RADIUS) {
-                        return;
-                    }
-                    const receivedData = normalizeReceivedSliceData(data, completedRequest);
-                    cacheSliceData(receivedData);
-                    updateFileSize(data.fileSize);
-                    if (requestMatchesCurrentControls(completedRequest)) {
-                        displaySliceData(receivedData);
-                        hideError();
-                    }
-                }
-            } catch (error) {
-                showError(String(error));
-            } finally {
-                finishPrefetchRequest(completedRequest);
             }
         }
 
@@ -1130,52 +1069,8 @@ export class WebviewUIManager {
             return new Uint8Array(data.data);
         }
 
-        function createPixelReader(rawData, dataType, endianness) {
-            const view = new DataView(rawData.buffer, rawData.byteOffset, rawData.byteLength);
-            let bytesPerPixel = 1;
-            let getValue;
-            switch (dataType) {
-                case 'uint8':
-                    bytesPerPixel = 1;
-                    getValue = (offset) => view.getUint8(offset);
-                    break;
-                case 'int8':
-                    bytesPerPixel = 1;
-                    getValue = (offset) => view.getInt8(offset);
-                    break;
-                case 'uint16':
-                    bytesPerPixel = 2;
-                    getValue = (offset) => view.getUint16(offset, endianness);
-                    break;
-                case 'int16':
-                    bytesPerPixel = 2;
-                    getValue = (offset) => view.getInt16(offset, endianness);
-                    break;
-                case 'uint32':
-                    bytesPerPixel = 4;
-                    getValue = (offset) => view.getUint32(offset, endianness);
-                    break;
-                case 'int32':
-                    bytesPerPixel = 4;
-                    getValue = (offset) => view.getInt32(offset, endianness);
-                    break;
-                case 'float32':
-                    bytesPerPixel = 4;
-                    getValue = (offset) => view.getFloat32(offset, endianness);
-                    break;
-                case 'float64':
-                    bytesPerPixel = 8;
-                    getValue = (offset) => view.getFloat64(offset, endianness);
-                    break;
-                default:
-                    throw new Error(\`Unsupported data type: \${dataType}\`);
-            }
-
-            return { bytesPerPixel, getValue };
-        }
-
         function updateSliceRange(data) {
-            const statistics = computeSliceStatistics(data);
+            const statistics = data.statistics || null;
             if (!statistics) {
                 // Keep the last known slider range until the worker supplies
                 // this slice's statistics. Missing statistics are not zeros.
@@ -1185,19 +1080,11 @@ export class WebviewUIManager {
 
             sliceMin = statistics.min;
             sliceMax = statistics.max;
-            updateSliceStatisticsDisplay(statistics);
-            updateWindowControls();
-        }
-
-        function computeSliceStatistics(data) {
-            return data.statistics || null;
-        }
-
-        function updateSliceStatisticsDisplay(statistics) {
             sliceStatMinEl.textContent = formatStatisticValue(statistics.min);
             sliceStatMaxEl.textContent = formatStatisticValue(statistics.max);
             sliceStatMeanEl.textContent = formatStatisticValue(statistics.mean);
             sliceStatSumEl.textContent = formatStatisticValue(statistics.sum);
+            updateWindowControls();
         }
 
         function clearSliceStatistics() {
@@ -1220,7 +1107,7 @@ export class WebviewUIManager {
 
             return Math.min(sliceMax, Math.max(sliceMin, value));
         }
-        
+
         function renderSlice(data) {
             pendingRender = { data, windowMin, windowMax, epoch: renderEpoch };
             scheduleRender();
@@ -1234,7 +1121,75 @@ export class WebviewUIManager {
                 renderAnimationFrame = null;
                 if (!pendingRender || activeRender) { return; }
                 try {
-                    ensureRenderWorker();
+                    if (!renderWorker) {
+                        const url = URL.createObjectURL(new Blob([renderWorkerSource], { type: 'application/javascript' }));
+                        let revoked = false;
+                        const revoke = () => {
+                            if (!revoked) { URL.revokeObjectURL(url); revoked = true; }
+                        };
+                        try {
+                            const worker = new Worker(url);
+                            renderWorker = worker;
+                            worker.onmessage = event => {
+                                revoke();
+                                if (renderWorker !== worker) { return; }
+                                const result = event.data;
+                                const completed = activeRender;
+                                if (!completed || result.renderId !== completed.renderId) { return; }
+                                activeRender = null;
+                                const isCurrent = completed.epoch === renderEpoch && completed.data === currentSliceData;
+                                if (result.type === 'error') {
+                                    workerSliceData = null;
+                                    if (isCurrent) { showError(result.message); }
+                                } else if (isCurrent) {
+                                    try {
+                                        const data = completed.data;
+                                        if (!data.statistics) {
+                                            data.statistics = result.statistics;
+                                            updateSliceRange(data);
+                                        }
+                                        if (windowMin === null || windowMax === null) {
+                                            resetWindowToSliceRange();
+                                        }
+                                        if (canvas.width !== result.width) { canvas.width = result.width; }
+                                        if (canvas.height !== result.height) { canvas.height = result.height; }
+                                        const imageData = new ImageData(new Uint8ClampedArray(result.pixels), result.width, result.height);
+                                        ctx.putImageData(imageData, 0, 0);
+                                        recycledPixels = result.pixels;
+                                        const rawData = decodeSliceData(data);
+                                        const endianness = data.endianness !== undefined ? data.endianness : endiannessSelect.value === 'little';
+                                        if (!Object.prototype.hasOwnProperty.call(dataTypes, data.dataType)) {
+                                            throw new Error('Unsupported data type: ' + data.dataType);
+                                        }
+                                        const { bytesPerPixel, getter } = dataTypes[data.dataType];
+                                        const view = new DataView(rawData.buffer, rawData.byteOffset, rawData.byteLength);
+                                        const getValue = offset => view[getter](offset, endianness);
+                                        pixelInspection = { width: data.width, height: data.height, rawData, bytesPerPixel, getValue };
+                                        scaleCanvasToFit();
+                                        hideError();
+                                    } catch (error) {
+                                        showError(String(error));
+                                    }
+                                }
+                                // Painting intermediate window values keeps dragging live. Only the
+                                // newest pending values are rendered next, so the queue cannot grow.
+                                scheduleRender();
+                            };
+                            worker.onerror = event => {
+                                revoke();
+                                if (renderWorker !== worker) { return; }
+                                failRenderer(event.message || 'Unable to start image renderer');
+                            };
+                            worker.onmessageerror = () => {
+                                revoke();
+                                if (renderWorker === worker) { failRenderer('Unable to receive rendered image'); }
+                            };
+                            worker.revokeUrl = revoke;
+                        } catch (error) {
+                            revoke();
+                            throw error;
+                        }
+                    }
                     const request = pendingRender;
                     pendingRender = null;
                     request.renderId = nextRenderId++;
@@ -1264,75 +1219,6 @@ export class WebviewUIManager {
             });
         }
 
-        function ensureRenderWorker() {
-            if (renderWorker) { return; }
-            const url = URL.createObjectURL(new Blob([renderWorkerSource], { type: 'application/javascript' }));
-            let revoked = false;
-            const revoke = () => {
-                if (!revoked) { URL.revokeObjectURL(url); revoked = true; }
-            };
-            try {
-                const worker = new Worker(url);
-                renderWorker = worker;
-                worker.onmessage = event => {
-                    revoke();
-                    if (renderWorker !== worker) { return; }
-                    finishRender(event.data);
-                };
-                worker.onerror = event => {
-                    revoke();
-                    if (renderWorker !== worker) { return; }
-                    failRenderer(event.message || 'Unable to start image renderer');
-                };
-                worker.onmessageerror = () => {
-                    revoke();
-                    if (renderWorker === worker) { failRenderer('Unable to receive rendered image'); }
-                };
-                worker.revokeUrl = revoke;
-            } catch (error) {
-                revoke();
-                throw error;
-            }
-        }
-
-        function finishRender(result) {
-            const completed = activeRender;
-            if (!completed || result.renderId !== completed.renderId) { return; }
-            activeRender = null;
-            const isCurrent = completed.epoch === renderEpoch && completed.data === currentSliceData;
-            if (result.type === 'error') {
-                workerSliceData = null;
-                if (isCurrent) { showError(result.message); }
-            } else if (isCurrent) {
-                try {
-                    const data = completed.data;
-                    if (!data.statistics) {
-                        data.statistics = result.statistics;
-                        updateSliceRange(data);
-                    }
-                    if (windowMin === null || windowMax === null) {
-                        resetWindowToSliceRange();
-                    }
-                    if (canvas.width !== result.width) { canvas.width = result.width; }
-                    if (canvas.height !== result.height) { canvas.height = result.height; }
-                    const imageData = new ImageData(new Uint8ClampedArray(result.pixels), result.width, result.height);
-                    ctx.putImageData(imageData, 0, 0);
-                    recycledPixels = result.pixels;
-                    const rawData = decodeSliceData(data);
-                    const endianness = data.endianness !== undefined ? data.endianness : endiannessSelect.value === 'little';
-                    const { bytesPerPixel, getValue } = createPixelReader(rawData, data.dataType, endianness);
-                    pixelInspection = { width: data.width, height: data.height, rawData, bytesPerPixel, getValue };
-                    scaleCanvasToFit();
-                    hideError();
-                } catch (error) {
-                    showError(String(error));
-                }
-            }
-            // Painting intermediate window values keeps dragging live. Only the
-            // newest pending values are rendered next, so the queue cannot grow.
-            scheduleRender();
-        }
-
         function invalidateRender() {
             renderEpoch++;
             pendingRender = null;
@@ -1358,11 +1244,6 @@ export class WebviewUIManager {
             pendingRender = null;
             recycledPixels = null;
             showError('Failed to render slice: ' + message);
-        }
-
-        function handlePixelHover(event) {
-            hoverPosition = { clientX: event.clientX, clientY: event.clientY };
-            updatePixelInfo();
         }
 
         function clearPixelHover() {
@@ -1402,7 +1283,7 @@ export class WebviewUIManager {
             pixelPositionEl.textContent = '(' + x + ', ' + y + ')';
             pixelValueEl.textContent = valueText;
         }
-        
+
         function scaleCanvasToFit() {
             const container = canvas.parentElement;
             if (!container) {
@@ -1412,18 +1293,18 @@ export class WebviewUIManager {
             const containerRect = container.getBoundingClientRect();
             const containerWidth = Math.max(0, containerRect.width - 40);
             const containerHeight = Math.max(0, containerRect.height - 40);
-            
+
             const imageWidth = canvas.width;
             const imageHeight = canvas.height;
-            
+
             if (imageWidth > 0 && imageHeight > 0 && containerWidth > 0 && containerHeight > 0) {
                 const scaleX = containerWidth / imageWidth;
                 const scaleY = containerHeight / imageHeight;
                 const scale = Math.min(scaleX, scaleY);
-                
+
                 const displayWidth = Math.floor(imageWidth * scale);
                 const displayHeight = Math.floor(imageHeight * scale);
-                
+
                 canvas.style.width = displayWidth + 'px';
                 canvas.style.height = displayHeight + 'px';
             }
@@ -1440,19 +1321,7 @@ export class WebviewUIManager {
                 scaleCanvasToFit();
             });
         }
-        
-        function findMinMax(values) {
-            let min = values[0];
-            let max = values[0];
-            
-            for (let i = 1; i < values.length; i++) {
-                if (values[i] < min) min = values[i];
-                if (values[i] > max) max = values[i];
-            }
-            
-            return { min, max };
-        }
-        
+
         function updateWindowControls() {
             const clippedWindowMin = clipWindowValueToSliceRange(windowMin);
             const clippedWindowMax = clipWindowValueToSliceRange(windowMax);
@@ -1475,7 +1344,7 @@ export class WebviewUIManager {
             windowMinInput.step = step;
             windowMaxInput.step = step;
         }
-        
+
         function updateWindow() {
             windowMin = parseFloat(windowMinInput.value);
             windowMax = parseFloat(windowMaxInput.value);
@@ -1488,7 +1357,7 @@ export class WebviewUIManager {
                 renderSlice(currentSliceData);
             }
         }
-        
+
         function resetWindow() {
             if (!currentSliceData) {
                 return;
@@ -1503,12 +1372,12 @@ export class WebviewUIManager {
             }
             renderSlice(currentSliceData);
         }
-        
+
         function showError(message) {
             errorMessage.textContent = message;
             errorPanel.style.display = 'block';
         }
-        
+
         function hideError() {
             errorPanel.style.display = 'none';
         }
@@ -1524,18 +1393,18 @@ export class WebviewUIManager {
             updateWindowControls();
             updateSliceInfo();
         }
-        
+
         function updateSliceInfo() {
             if (!fileInfo) return;
-            
+
             const width = parseInt(widthInput.value);
             const height = parseInt(heightInput.value);
             const dataType = dataTypeSelect.value;
-            
+
             if (width > 0 && height > 0) {
                 const bytesPerPixel = getBytesPerPixel(dataType);
                 let numSlices, maxSlice;
-                
+
                 if (currentPlane === 'coronal') {
                     maxSlice = Math.max(0, height - 1);
                     numSlices = height;
@@ -1547,11 +1416,11 @@ export class WebviewUIManager {
                     numSlices = Math.floor(fileInfo.fileSize / sliceSize);
                     maxSlice = Math.max(0, numSlices - 1);
                 }
-                
+
                 numSlicesEl.textContent = numSlices.toString();
                 sliceInput.max = maxSlice.toString();
                 sliceSlider.max = maxSlice.toString();
-                
+
                 if (parseInt(sliceInput.value) > maxSlice) {
                     sliceInput.value = '0';
                     sliceSlider.value = '0';
@@ -1562,26 +1431,14 @@ export class WebviewUIManager {
                 sliceSlider.max = '0';
             }
         }
-        
+
         function getBytesPerPixel(dataType) {
-            switch (dataType) {
-                case 'uint8':
-                case 'int8':
-                    return 1;
-                case 'uint16':
-                case 'int16':
-                    return 2;
-                case 'float32':
-                case 'uint32':
-                case 'int32':
-                    return 4;
-                case 'float64':
-                    return 8;
-                default:
-                    return 4;
+            if (!Object.prototype.hasOwnProperty.call(dataTypes, dataType)) {
+                throw new Error('Unsupported data type: ' + dataType);
             }
+            return dataTypes[dataType].bytesPerPixel;
         }
-        
+
         function togglePlane() {
             clearPixelHover();
             clearSliceCacheAndPrefetch();
@@ -1595,17 +1452,17 @@ export class WebviewUIManager {
             clearSliceStatistics();
             updateWindowControls();
             updateSliceInfo();
-            
+
             sliceInput.value = '0';
             sliceSlider.value = '0';
-            
+
             const width = parseInt(widthInput.value);
             const height = parseInt(heightInput.value);
             if (width > 0 && height > 0) {
                 loadSlice();
             }
         }
-        
+
         function formatBytes(bytes) {
             if (bytes === 0) return '0 Bytes';
             const k = 1024;
@@ -1617,7 +1474,7 @@ export class WebviewUIManager {
         function formatStatisticValue(value) {
             return Number.isFinite(value) ? String(value) : '-';
         }
-        
+
         vscode.postMessage({ type: '${CONSTANTS.MESSAGE_TYPES.READY}' });
     </script>
 </body>
