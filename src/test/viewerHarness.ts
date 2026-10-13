@@ -7,6 +7,10 @@ export interface TestElement {
     max?: string;
     textContent: string;
     style: Record<string, string>;
+    disabled: boolean;
+    focus(): void;
+    contains(target: unknown): boolean;
+    getBoundingClientRect(): { left: number; top: number; width: number; height: number };
     listeners: Map<string, (event?: any) => void>;
     addEventListener(type: string, listener: (event?: any) => void): void;
 }
@@ -14,12 +18,22 @@ export interface TestElement {
 /** Runs the shipped webview script with controllable frames and worker replies. */
 export function createViewer(cacheBudgetBytes?: number) {
     const elements = new Map<string, TestElement>();
+    const document = {
+        activeElement: null as TestElement | null,
+        getElementById: (id: string) => getElement(id),
+        addEventListener: (type: string, listener: (event?: any) => void) => documentListeners.set(type, listener)
+    };
+    const documentListeners = new Map<string, (event?: any) => void>();
     const getElement = (id: string): TestElement => {
         let element = elements.get(id);
         if (!element) {
             element = {
                 value: id === 'endianness' ? 'little' : '0',
                 textContent: '', style: {}, listeners: new Map(),
+                disabled: false,
+                focus() { document.activeElement = this; },
+                contains(target) { return target === this || (id === 'imageContextMenu' && target === getElement('copyImagePng')); },
+                getBoundingClientRect: () => ({ left: 0, top: 0, width: 180, height: 36 }),
                 addEventListener(type, listener) { this.listeners.set(type, listener); }
             };
             elements.set(id, element);
@@ -28,12 +42,19 @@ export function createViewer(cacheBudgetBytes?: number) {
     };
     const rect = { left: 100, top: 50, width: 200, height: 100 };
     const painted: Uint8ClampedArray[] = [];
+    const encodedImages: Array<{ type: string; width: number; height: number; pixels: Uint8ClampedArray }> = [];
+    const clipboardItems: Array<Record<string, Promise<(typeof encodedImages)[number]>>> = [];
     let canvasResets = 0;
     let width = 0;
     let height = 0;
     const canvas = Object.assign(getElement('imageCanvas'), {
         getBoundingClientRect: () => rect,
         getContext: () => ({ putImageData: (image: { data: Uint8ClampedArray }) => painted.push(image.data.slice()) }),
+        toBlob: (callback: (blob: (typeof encodedImages)[number]) => void, type: string) => {
+            const blob = { type, width, height, pixels: painted[painted.length - 1].slice() };
+            encodedImages.push(blob);
+            Promise.resolve().then(() => callback(blob));
+        },
         parentElement: { getBoundingClientRect: () => ({ width: 240, height: 140 }) }
     });
     Object.defineProperties(canvas, {
@@ -80,8 +101,19 @@ export function createViewer(cacheBudgetBytes?: number) {
         },
         Worker: MockWorker,
         ImageData: class { constructor(public data: Uint8ClampedArray, public width: number, public height: number) {} },
-        document: { getElementById: getElement, addEventListener: () => undefined },
-        window: { addEventListener: (type: string, listener: () => void) => windowListeners.set(type, listener) },
+        ClipboardItem: class { constructor(public data: (typeof clipboardItems)[number]) {} },
+        navigator: {
+            clipboard: {
+                write: async (items: Array<{ data: (typeof clipboardItems)[number] }>) => {
+                    for (const item of items) {
+                        clipboardItems.push(item.data);
+                        await item.data['image/png'];
+                    }
+                }
+            }
+        },
+        document,
+        window: { innerWidth: 800, innerHeight: 600, addEventListener: (type: string, listener: () => void) => windowListeners.set(type, listener) },
         acquireVsCodeApi: () => ({ postMessage: (message: any) => postedMessages.push(message) }),
         requestAnimationFrame: (callback: () => void) => { frames.push(callback); return frames.length; }
     });
@@ -99,7 +131,8 @@ export function createViewer(cacheBudgetBytes?: number) {
         assert.strictEqual(frames.length + jobs.length + replies.length, 0, 'renderer must become idle');
     };
     return {
-        rect, getElement, windowListeners, context, painted, workerMessages, postedMessages,
+        rect, getElement, windowListeners, documentListeners, context, painted, workerMessages, postedMessages,
+        encodedImages, clipboardItems,
         run, flushFrames, flushJobs, flushReplies, flush,
         canvasResets: () => canvasResets, workerTerminations: () => workerTerminations,
         pixelInfo() {

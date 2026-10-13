@@ -4,6 +4,12 @@ All notable changes to the "binary-image-file-viewer" extension are documented h
 
 This project adheres to Keep a Changelog and Semantic Versioning.
 
+## [0.10.4] - 2026-10-13
+
+### Added
+
+- Right-click the image to copy the displayed slice as PNG at its original dimensions, including the current window/level settings.
+
 ## [0.10.3] - 2026-10-11
 
 ### Changed

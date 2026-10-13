@@ -154,6 +154,43 @@ export class WebviewUIManager {
             transition: transform 0.3s ease;
         }
 
+        #imageContextMenu {
+            position: fixed;
+            z-index: 10;
+            padding: 4px;
+            max-width: calc(100vw - 8px);
+            background-color: var(--vscode-menu-background, var(--vscode-editorWidget-background));
+            color: var(--vscode-menu-foreground, var(--vscode-foreground));
+            border: 1px solid var(--vscode-menu-border, var(--vscode-panel-border));
+            border-radius: 4px;
+            box-shadow: 0 2px 8px var(--vscode-widget-shadow);
+        }
+
+        #copyImagePng {
+            width: 100%;
+            margin: 0;
+            border: none;
+            background: transparent;
+            color: inherit;
+            text-align: left;
+            font: inherit;
+            white-space: nowrap;
+            text-transform: none;
+            letter-spacing: normal;
+            box-shadow: none;
+        }
+
+        #copyImagePng:hover:not(:disabled),
+        #copyImagePng:focus-visible {
+            background-color: var(--vscode-menu-selectionBackground);
+            color: var(--vscode-menu-selectionForeground);
+        }
+
+        #copyImagePng:disabled {
+            opacity: 0.5;
+            cursor: default;
+        }
+
         .side-panel {
             width: 320px;
             display: flex;
@@ -426,7 +463,7 @@ export class WebviewUIManager {
             </div>
 
             <div class="canvas-container">
-                <canvas id="imageCanvas"></canvas>
+                <canvas id="imageCanvas" tabindex="0" aria-label="Image preview"></canvas>
             </div>
 
             <div class="side-panel side-panel--right">
@@ -457,6 +494,10 @@ export class WebviewUIManager {
                 </div>
             </div>
         </div>
+    </div>
+
+    <div id="imageContextMenu" role="menu" aria-label="Image actions" style="display: none;">
+        <button id="copyImagePng" type="button" role="menuitem">Copy Image as PNG</button>
     </div>
 
     <script>
@@ -494,6 +535,8 @@ export class WebviewUIManager {
         let renderEpoch = 0;
         let nextRenderId = 1;
         let recycledPixels = null;
+        let hasRenderedImage = false;
+        let copyingImage = false;
         const renderWorkerSource = ${JSON.stringify(RENDER_WORKER_SOURCE)};
 
         // DOM elements
@@ -511,6 +554,8 @@ export class WebviewUIManager {
         const togglePlaneButton = document.getElementById('togglePlane');
         const canvas = document.getElementById('imageCanvas');
         const ctx = canvas.getContext('2d');
+        const imageContextMenu = document.getElementById('imageContextMenu');
+        const copyImagePngButton = document.getElementById('copyImagePng');
         const errorPanel = document.getElementById('errorPanel');
         const errorMessage = document.getElementById('errorMessage');
 
@@ -544,6 +589,17 @@ export class WebviewUIManager {
 
         // Keyboard shortcuts for slice navigation
         document.addEventListener('keydown', event => {
+            if (imageContextMenu.style.display === 'block') {
+                if (event.key === 'Escape') {
+                    event.preventDefault();
+                    hideImageContextMenu(true);
+                } else if (event.key === 'Tab') {
+                    hideImageContextMenu();
+                } else if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+                    event.preventDefault();
+                }
+                return;
+            }
             if (document.activeElement && document.activeElement.tagName === 'INPUT' && document.activeElement !== sliceInput) {
                 return;
             }
@@ -588,10 +644,35 @@ export class WebviewUIManager {
             updatePixelInfo();
         });
         canvas.addEventListener('mouseleave', clearPixelHover);
-        window.addEventListener('scroll', clearPixelHover, true);
+        canvas.addEventListener('contextmenu', event => {
+            event.preventDefault();
+            event.stopPropagation();
+            showImageContextMenu(event.clientX, event.clientY);
+        });
+        canvas.addEventListener('keydown', event => {
+            if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) {
+                event.preventDefault();
+                event.stopPropagation();
+                const rect = canvas.getBoundingClientRect();
+                showImageContextMenu(rect.left, rect.top);
+            }
+        });
+        copyImagePngButton.addEventListener('click', copyImageAsPng);
+        document.addEventListener('pointerdown', event => {
+            if (!imageContextMenu.contains(event.target)) { hideImageContextMenu(); }
+        });
+        document.addEventListener('contextmenu', () => hideImageContextMenu());
+        window.addEventListener('blur', () => hideImageContextMenu());
+        window.addEventListener('scroll', () => {
+            clearPixelHover();
+            hideImageContextMenu();
+        }, true);
 
         // Handle editor/sidebar resize to rescale canvas when VS Code panels move.
-        window.addEventListener('resize', scheduleCanvasScale);
+        window.addEventListener('resize', () => {
+            hideImageContextMenu();
+            scheduleCanvasScale();
+        });
         if (typeof ResizeObserver !== 'undefined' && canvas.parentElement) {
             const resizeObserver = new ResizeObserver(scheduleCanvasScale);
             resizeObserver.observe(canvas.parentElement);
@@ -1171,6 +1252,7 @@ export class WebviewUIManager {
                                         if (canvas.height !== result.height) { canvas.height = result.height; }
                                         const imageData = new ImageData(new Uint8ClampedArray(result.pixels), result.width, result.height);
                                         ctx.putImageData(imageData, 0, 0);
+                                        hasRenderedImage = true;
                                         recycledPixels = result.pixels;
                                         const rawData = decodeSliceData(data);
                                         const endianness = data.endianness !== undefined ? data.endianness : endiannessSelect.value === 'little';
@@ -1237,6 +1319,8 @@ export class WebviewUIManager {
 
         function invalidateRender() {
             renderEpoch++;
+            hasRenderedImage = false;
+            hideImageContextMenu();
             pendingRender = null;
             pixelInspection = null;
             if (activeRender && renderWorker) {
@@ -1260,6 +1344,43 @@ export class WebviewUIManager {
             pendingRender = null;
             recycledPixels = null;
             showError('Failed to render slice: ' + message);
+        }
+
+        function showImageContextMenu(clientX, clientY) {
+            copyImagePngButton.disabled = !hasRenderedImage || copyingImage;
+            imageContextMenu.style.display = 'block';
+            const rect = imageContextMenu.getBoundingClientRect();
+            imageContextMenu.style.left = Math.max(4, Math.min(clientX, window.innerWidth - rect.width - 4)) + 'px';
+            imageContextMenu.style.top = Math.max(4, Math.min(clientY, window.innerHeight - rect.height - 4)) + 'px';
+            if (!copyImagePngButton.disabled) { copyImagePngButton.focus(); }
+        }
+
+        function hideImageContextMenu(restoreFocus = false) {
+            imageContextMenu.style.display = 'none';
+            if (restoreFocus) { canvas.focus(); }
+        }
+
+        async function copyImageAsPng() {
+            hideImageContextMenu(true);
+            if (!hasRenderedImage || copyingImage) { return; }
+            copyingImage = true;
+            try {
+                if (typeof ClipboardItem === 'undefined' || !navigator.clipboard || !navigator.clipboard.write) {
+                    throw new Error('Image clipboard access is unavailable in this version of VS Code.');
+                }
+                // Start encoding the canvas now, and write during the menu click's user activation.
+                const png = new Promise((resolve, reject) => {
+                    canvas.toBlob(blob => {
+                        if (blob) { resolve(blob); }
+                        else { reject(new Error('Unable to encode the displayed image as PNG.')); }
+                    }, 'image/png');
+                });
+                await navigator.clipboard.write([new ClipboardItem({ 'image/png': png })]);
+            } catch (error) {
+                showError('Failed to copy image: ' + (error instanceof Error ? error.message : String(error)));
+            } finally {
+                copyingImage = false;
+            }
         }
 
         function clearPixelHover() {

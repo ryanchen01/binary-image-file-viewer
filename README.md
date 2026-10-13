@@ -8,6 +8,7 @@ A Visual Studio Code extension for viewing and analyzing binary image files with
 - Window/level controls with live preview and reset, with pixel conversion in a web worker
 - Hover over a pixel to see its original value and zero-based image coordinates in the left sidebar
 - Real-time rendering with auto-scaling to fit the viewport
+- Right-click the image and choose "Copy Image as PNG" to copy the displayed slice at its original dimensions, with the current window/level settings
 - Slice navigation via slider, mouse wheel, and arrow keys
 - File info panel: name, size, dimensions, estimated slice count
 - Robust validation and user-facing error messages
@@ -25,6 +26,7 @@ A Visual Studio Code extension for viewing and analyzing binary image files with
 1) Open a .raw or .bin file
 2) Enter width, height, data type, endianness
 3) Click "Load Slice" and navigate slices; toggle plane as needed
+4) Right-click the image and choose "Copy Image as PNG", then paste it into an application that accepts images
 
 ## Remote SSH and memory
 
