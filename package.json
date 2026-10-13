@@ -8,7 +8,7 @@
     "url": "https://github.com/ryanchen01/binary-image-file-viewer"
   },
   "publisher": "ryanchen01",
-  "version": "0.10.3",
+  "version": "0.10.4",
   "engines": {
     "vscode": "^1.57.0"
   },
@@ -22,7 +22,9 @@
     "onCommand:binary-image-file-viewer.openMhdText"
   ],
   "main": "./dist/extension.js",
-  "extensionKind": ["workspace"],
+  "extensionKind": [
+    "workspace"
+  ],
   "contributes": {
     "configuration": {
       "title": "Binary Image Viewer",
