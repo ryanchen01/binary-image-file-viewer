@@ -16,6 +16,8 @@ A Visual Studio Code extension for viewing and analyzing binary image files with
 
 ## Supported File Types
 - .raw, .bin (other binary types may work if dimensions/data type are known)
+- .mhd with a separate raw data file, and .mha with embedded data (`ElementDataFile = LOCAL`)
+- MetaImage support covers uncompressed, single-channel binary images with two or three dimensions. Compressed images are not supported.
 
 ## Install
 - Requires VS Code 1.57 or newer for efficient binary messages between the extension and viewer
@@ -27,6 +29,12 @@ A Visual Studio Code extension for viewing and analyzing binary image files with
 2) Enter width, height, data type, endianness
 3) Click "Load Slice" and navigate slices; toggle plane as needed
 4) Right-click the image and choose "Copy Image as PNG", then paste it into an application that accepts images
+
+For `.mhd` or `.mha`, choose "Reopen Editor With..." and select "MHD/MHA Image Viewer",
+or use "Open MHD/MHA Viewer" in the editor toolbar. The header supplies dimensions,
+data type, and byte order automatically. Use "Open MHD/MHA Text" to switch back.
+The viewer reads `.mha` slices directly from the embedded data without loading the
+whole volume. File size in the viewer reports the pixel data size, excluding the header.
 
 ## Remote SSH and memory
 

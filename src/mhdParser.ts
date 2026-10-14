@@ -21,7 +21,7 @@ const ELEMENT_TYPE_MAP: Record<string, SupportedDataType> = {
     MET_INT: 'int32'
 };
 
-export function parseMhdHeader(content: string): MhdMetadata {
+export function parseMhdHeader(content: string, allowLocalData = false): MhdMetadata {
     const fields = new Map<string, string>();
     const lines = content.split(/\r?\n/);
 
@@ -40,15 +40,18 @@ export function parseMhdHeader(content: string): MhdMetadata {
         const value = trimmedLine.slice(separatorIndex + 1).trim();
         if (key) {
             fields.set(key, value);
+            if (key === 'ElementDataFile' && value.toUpperCase() === 'LOCAL') {
+                break;
+            }
         }
     }
 
-    const binaryData = getRequiredField(fields, 'BinaryData');
+    const binaryData = allowLocalData ? fields.get('BinaryData') ?? 'True' : getRequiredField(fields, 'BinaryData');
     if (!parseBoolean(binaryData)) {
         throw new Error('Unsupported MHD file: BinaryData must be True');
     }
 
-    const compressedData = getRequiredField(fields, 'CompressedData');
+    const compressedData = allowLocalData ? fields.get('CompressedData') ?? 'False' : getRequiredField(fields, 'CompressedData');
     if (parseBoolean(compressedData)) {
         throw new Error('Unsupported MHD file: CompressedData must be False');
     }
@@ -62,13 +65,20 @@ export function parseMhdHeader(content: string): MhdMetadata {
     ) {
         throw new Error('Invalid MHD DimSize: expected two or three positive integer dimensions');
     }
+    if (fields.has('NDims') && Number(fields.get('NDims')) !== dimSize.length) {
+        throw new Error('Invalid MHD NDims: must match DimSize');
+    }
+    if (fields.has('ElementNumberOfChannels') && fields.get('ElementNumberOfChannels') !== '1') {
+        throw new Error('Unsupported MetaImage: ElementNumberOfChannels must be 1');
+    }
     const elementType = getRequiredField(fields, 'ElementType').toUpperCase();
     const dataType = ELEMENT_TYPE_MAP[elementType];
     if (!dataType) {
         throw new Error(`Unsupported MHD ElementType: ${elementType}`);
     }
 
-    const byteOrderValue = fields.get('BinaryDataByteOrderMSB') ?? fields.get('ElementByteOrderMSB');
+    const byteOrderValue = fields.get('BinaryDataByteOrderMSB') ?? fields.get('ElementByteOrderMSB') ??
+        (allowLocalData ? 'False' : undefined);
     if (!byteOrderValue) {
         throw new Error('Invalid MHD file: missing BinaryDataByteOrderMSB or ElementByteOrderMSB');
     }
@@ -83,7 +93,7 @@ export function parseMhdHeader(content: string): MhdMetadata {
     if (!elementDataFile) {
         throw new Error('Invalid MHD ElementDataFile: missing data file');
     }
-    if (normalizedValue === 'LIST' || normalizedValue === 'LOCAL') {
+    if (normalizedValue === 'LIST' || (normalizedValue === 'LOCAL' && !allowLocalData)) {
         throw new Error(`Unsupported MHD ElementDataFile: ${elementDataFile}`);
     }
     if (!wasQuoted && /\s/.test(elementDataFile)) {

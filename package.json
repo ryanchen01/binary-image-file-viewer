@@ -41,12 +41,12 @@
     "commands": [
       {
         "command": "binary-image-file-viewer.openMhdViewer",
-        "title": "Open MHD Viewer",
+        "title": "Open MHD/MHA Viewer",
         "icon": "$(open-preview)"
       },
       {
         "command": "binary-image-file-viewer.openMhdText",
-        "title": "Open MHD Text",
+        "title": "Open MHD/MHA Text",
         "icon": "$(go-to-file)"
       }
     ],
@@ -65,10 +65,13 @@
       },
       {
         "viewType": "binaryImageViewer.mhdEditor",
-        "displayName": "MHD Image Viewer",
+        "displayName": "MHD/MHA Image Viewer",
         "selector": [
           {
             "filenamePattern": "*.mhd"
+          },
+          {
+            "filenamePattern": "*.mha"
           }
         ],
         "priority": "option"
@@ -78,7 +81,7 @@
       "editor/title": [
         {
           "command": "binary-image-file-viewer.openMhdViewer",
-          "when": "resourceExtname == .mhd && activeCustomEditorId != binaryImageViewer.mhdEditor",
+          "when": "(resourceExtname == .mhd || resourceExtname == .mha) && activeCustomEditorId != binaryImageViewer.mhdEditor",
           "group": "navigation"
         },
         {

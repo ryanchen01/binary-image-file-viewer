@@ -43,8 +43,8 @@ function resolveServices(candidates: unknown[]): MhdCommandServices {
 async function openMhdWithEditor(editorId: string, uri: vscode.Uri | undefined, services: MhdCommandServices): Promise<void> {
     const targetUri = uri ?? services.activeTextEditor?.document.uri;
     if (!targetUri || (targetUri.scheme && targetUri.scheme !== 'file') ||
-        !targetUri.fsPath.toLowerCase().endsWith('.mhd')) {
-        await services.showErrorMessage('Open an MHD file before switching the MHD viewer.');
+        !/\.mh[da]$/i.test(targetUri.fsPath)) {
+        await services.showErrorMessage('Open an MHD or MHA file before switching the image viewer.');
         return;
     }
 

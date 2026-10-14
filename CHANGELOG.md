@@ -4,6 +4,16 @@ All notable changes to the "binary-image-file-viewer" extension are documented h
 
 This project adheres to Keep a Changelog and Semantic Versioning.
 
+## [0.10.5] - 2026-10-14
+
+### Added
+
+- Support uncompressed, single-channel 2D and 3D `.mha` images with embedded pixel data, automatic metadata loading, and on-demand axial and coronal slice reads.
+
+### Changed
+
+- Extend the MetaImage viewer and text editor commands to `.mha` files and rename them to "Open MHD/MHA Viewer" and "Open MHD/MHA Text".
+
 ## [0.10.4] - 2026-10-13
 
 ### Added

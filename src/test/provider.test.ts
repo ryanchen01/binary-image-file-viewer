@@ -41,7 +41,7 @@ suite('BinaryImageEditorProvider', () => {
         ]);
         assert.ok(!binaryEditor.selector.some((selector: any) => selector.filenamePattern === '*.mhd'));
         assert.ok(mhdEditor);
-        assert.deepStrictEqual(mhdEditor.selector, [{ filenamePattern: '*.mhd' }]);
+        assert.deepStrictEqual(mhdEditor.selector, [{ filenamePattern: '*.mhd' }, { filenamePattern: '*.mha' }]);
         assert.strictEqual(mhdEditor.priority, 'option');
     });
 
@@ -57,6 +57,7 @@ suite('BinaryImageEditorProvider', () => {
 
         assert.ok(openViewerMenu);
         assert.ok(openViewerMenu.when.includes('resourceExtname == .mhd'));
+        assert.ok(openViewerMenu.when.includes('resourceExtname == .mha'));
         assert.ok(openViewerMenu.when.includes(`activeCustomEditorId != ${CONSTANTS.VIEW_TYPES.MHD_EDITOR}`));
         assert.strictEqual(openViewerMenu.group, 'navigation');
         assert.ok(openTextMenu);
@@ -480,7 +481,7 @@ suite('BinaryImageEditorProvider', () => {
         });
 
         assert.deepStrictEqual(calls, []);
-        assert.deepStrictEqual(errors, ['Open an MHD file before switching the MHD viewer.']);
+        assert.deepStrictEqual(errors, ['Open an MHD or MHA file before switching the image viewer.']);
     });
 
     test('openCustomDocument returns a document with the same URI', async () => {

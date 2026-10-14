@@ -4,10 +4,13 @@ import { FileCacheManager } from './fileCacheManager';
 import { SliceReader } from './sliceReader';
 import { WebviewUIManager } from './webviewUIManager';
 import { MhdMetadata, parseMhdHeader, resolveMhdDataFilePath } from './mhdParser';
+import { readMhaHeader } from './mhaReader';
 
 interface BinaryImageDocument extends vscode.CustomDocument {
     readonly dataUri: vscode.Uri;
     readonly metadata?: MhdMetadata;
+    readonly dataOffset?: number;
+    readonly dataLength?: number;
 }
 
 /** Reads image slices on demand for the readonly custom editor. */
@@ -18,24 +21,31 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
     public async openCustomDocument(
         uri: vscode.Uri,
         _openContext: vscode.CustomDocumentOpenContext,
-        _token: vscode.CancellationToken
+        token: vscode.CancellationToken
     ): Promise<BinaryImageDocument> {
         let metadata: MhdMetadata | undefined;
-        if (uri.fsPath.toLowerCase().endsWith('.mhd')) {
+        let dataOffset: number | undefined;
+        let dataLength: number | undefined;
+        const isMha = uri.fsPath.toLowerCase().endsWith('.mha');
+        if (isMha || uri.fsPath.toLowerCase().endsWith('.mhd')) {
             if (uri.scheme && uri.scheme !== 'file') {
-                throw new Error('MHD files must be opened from the local file system');
+                throw new Error('MetaImage files must be opened from the local file system');
             }
             try {
-                const headerData = await vscode.workspace.fs.readFile(uri);
-                metadata = parseMhdHeader(Buffer.from(headerData).toString('utf8'));
+                if (isMha) {
+                    ({ metadata, dataOffset, dataLength } = await readMhaHeader(uri, token));
+                } else {
+                    const headerData = await vscode.workspace.fs.readFile(uri);
+                    metadata = parseMhdHeader(Buffer.from(headerData).toString('utf8'));
+                }
             } catch (error) {
-                throw new Error(`Unable to parse MHD metadata: ${error}`);
+                throw new Error(`Unable to parse ${isMha ? 'MHA' : 'MHD'} metadata: ${error}`);
             }
         }
-        const dataUri = metadata
+        const dataUri = metadata && !isMha
             ? vscode.Uri.file(resolveMhdDataFilePath(uri.fsPath, metadata.elementDataFile))
             : uri;
-        return { uri, dataUri, metadata, dispose: () => {} };
+        return { uri, dataUri, metadata, dataOffset, dataLength, dispose: () => {} };
     }
 
     public async resolveCustomEditor(
@@ -61,7 +71,7 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
                         const stats = await this.fileCacheManager.getFileStats(binaryImageDocument.dataUri);
                         webview.postMessage({
                             type: CONSTANTS.MESSAGE_TYPES.FILE_INFO,
-                            fileSize: stats.size,
+                            fileSize: this.getDataSize(binaryImageDocument, stats.size),
                             width: binaryImageDocument.metadata?.width,
                             height: binaryImageDocument.metadata?.height,
                             depth: binaryImageDocument.metadata?.depth,
@@ -97,20 +107,22 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
                         let resultWidth: number;
                         let resultHeight: number;
                         const stats = await this.fileCacheManager.getFileStats(uri);
-                        const fileSize = stats.size;
+                        const fileSize = this.getDataSize(binaryImageDocument, stats.size);
+                        const dataOffset = binaryImageDocument.dataOffset ?? 0;
 
                         if (plane === 'axial') {
                             const { offset, length } = this.sliceReader.getAxialSliceRange(
-                                stats.size, width, height, slice, typedDataType
+                                fileSize, width, height, slice, typedDataType
                             );
-                            sliceData = await this.fileCacheManager.readFileRanges(uri, [{ offset, length }], token);
+                            sliceData = await this.fileCacheManager.readFileRanges(uri, [{ offset: offset + dataOffset, length }], token);
                             resultWidth = width;
                             resultHeight = height;
                         } else {
                             const { ranges, resultWidth: coronalWidth, resultHeight: coronalHeight } = this.sliceReader.getCoronalSliceRanges(
-                                stats.size, width, height, slice, typedDataType
+                                fileSize, width, height, slice, typedDataType
                             );
-                            sliceData = await this.fileCacheManager.readFileRanges(uri, ranges, token);
+                            sliceData = await this.fileCacheManager.readFileRanges(uri,
+                                ranges.map(range => ({ offset: range.offset + dataOffset, length: range.length })), token);
                             resultWidth = coronalWidth;
                             resultHeight = coronalHeight;
                         }
@@ -164,5 +176,13 @@ export class BinaryImageEditorProvider implements vscode.CustomReadonlyEditorPro
             messageSubscription.dispose();
             for (const read of reads.values()) { read.cancel(); }
         });
+    }
+
+    private getDataSize(document: BinaryImageDocument, fileSize: number): number {
+        if (document.dataLength === undefined) { return fileSize; }
+        if ((document.dataOffset ?? 0) + document.dataLength > fileSize) {
+            throw new Error('MHA image data is truncated');
+        }
+        return document.dataLength;
     }
 }
